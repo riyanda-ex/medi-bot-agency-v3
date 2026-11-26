@@ -1,0 +1,300 @@
+// MEDI-BOT AGENCY v3 - Schema utama (SQLite untuk testing Windows tanpa Docker).
+// Untuk PostgreSQL: jalankan `npm run prisma:generate:pg` yang membuat
+// prisma/schema.postgres.prisma dari file ini.
+// Tidak memakai enum karena SQLite tidak mendukung enum. Status disimpan sebagai String.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String
+  role         String
+  patientId    String?
+  patient      Patient?   @relation("UserPatient", fields: [patientId], references: [id])
+  doctorId     String?
+  doctor       Doctor?    @relation("UserDoctor", fields: [doctorId], references: [id])
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  auditLogs    AuditLog[] @relation("AuditActor")
+}
+
+model Patient {
+  id             String           @id @default(cuid())
+  nikEncrypted   String
+  nikHash        String           @unique
+  nikMasked      String
+  name           String
+  birthDate      DateTime
+  address        String
+  phoneEncrypted String
+  allergies      String
+  pregnancy      Boolean          @default(false)
+  distanceKm     Float            @default(5)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  users          User[]           @relation("UserPatient")
+  visits         Visit[]
+  medicalRecords MedicalRecord[]
+  labResults     LabResult[]
+  prescriptions  Prescription[]
+  triageLogs     TriageLog[]
+  urgentCalls    UrgentCall[]
+  notifications  Notification[]
+  appointments   Appointment[]
+  waitingLists   WaitingList[]
+  claims         Claim[]
+  auditLogs      AuditLog[]       @relation("AuditTarget")
+}
+
+model Doctor {
+  id             String         @id @default(cuid())
+  name           String
+  specialty      String
+  sip            String?
+  phone          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  users          User[]         @relation("UserDoctor")
+  visits         Visit[]
+  medicalRecords MedicalRecord[]
+  appointments   Appointment[]
+  waitingLists   WaitingList[]
+}
+
+model Visit {
+  id                          String          @id @default(cuid())
+  patientId                   String
+  patient                     Patient         @relation(fields: [patientId], references: [id])
+  doctorId                    String?
+  doctor                      Doctor?         @relation(fields: [doctorId], references: [id])
+  visitDate                   DateTime
+  status                      String
+  complaint                   String?
+  diagnosis                   String?
+  icd10                       String?
+  icd9                        String?
+  vitalSystolic               Int?
+  vitalDiastolic              Int?
+  glucose                     Int?
+  saturation                  Int?
+  pulse                       Int?
+  temperature                 Float?
+  potassium                   Float?
+  hemoglobin                  Float?
+  platelets                   Int?
+  daysSinceControl            Int?
+  chronicMedicationDaysLeft   Int?
+  mildLabAbnormal             Boolean?
+  triageLevel                 String?
+  aiScore                     Int?
+  createdAt                   DateTime        @default(now())
+  medicalRecords              MedicalRecord[]
+  labResults                  LabResult[]
+  prescriptions               Prescription[]
+  triageLogs                  TriageLog[]
+  urgentCalls                 UrgentCall[]
+  claims                      Claim[]
+
+  @@index([visitDate])
+  @@index([triageLevel])
+}
+
+model MedicalRecord {
+  id               String   @id @default(cuid())
+  visitId          String
+  visit            Visit    @relation(fields: [visitId], references: [id])
+  patientId        String
+  patient          Patient  @relation(fields: [patientId], references: [id])
+  doctorId         String?
+  doctor           Doctor?  @relation(fields: [doctorId], references: [id])
+  anamnesis        String?
+  diagnosisIcd10   String?
+  actionIcd9       String?
+  radiology        String?
+  vitalSigns       String?
+  note             String?
+  completenessScore Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model LabResult {
+  id             String   @id @default(cuid())
+  visitId        String
+  visit          Visit    @relation(fields: [visitId], references: [id])
+  patientId      String
+  patient        Patient  @relation(fields: [patientId], references: [id])
+  testName       String
+  value          Float?
+  unit           String?
+  referenceRange String?
+  abnormal       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+}
+
+model Prescription {
+  id            String   @id @default(cuid())
+  visitId       String
+  visit         Visit    @relation(fields: [visitId], references: [id])
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id])
+  medication    String
+  dose          String?
+  frequency     String?
+  durationDays  Int?
+  pregnancyCategory String?
+  isChronic     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+}
+
+model TriageLog {
+  id           String       @id @default(cuid())
+  patientId    String
+  patient      Patient      @relation(fields: [patientId], references: [id])
+  visitId      String?
+  visit        Visit?       @relation(fields: [visitId], references: [id])
+  level        String
+  reasons      String
+  score        Int
+  dataComplete Boolean
+  source       String
+  createdAt    DateTime     @default(now())
+  urgentCalls  UrgentCall[]
+
+  @@index([level, createdAt])
+}
+
+model UrgentCall {
+  id           String     @id @default(cuid())
+  patientId    String
+  patient      Patient    @relation(fields: [patientId], references: [id])
+  visitId      String?
+  visit        Visit?     @relation(fields: [visitId], references: [id])
+  triageLogId  String?
+  triageLog    TriageLog? @relation(fields: [triageLogId], references: [id])
+  channel      String
+  attempt      Int
+  status       String
+  provider     String
+  simulated    Boolean    @default(true)
+  message      String?
+  triggeredBy  String
+  approvedBy   String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([createdAt])
+}
+
+model AgentLog {
+  id         String   @id @default(cuid())
+  agentName  String
+  runId      String?
+  status     String
+  message    String?
+  payload    String?
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  @@index([agentName, createdAt])
+}
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  actorId         String
+  actor           User     @relation("AuditActor", fields: [actorId], references: [id])
+  action          String
+  targetPatientId String?
+  targetPatient   Patient? @relation("AuditTarget", fields: [targetPatientId], references: [id])
+  ipAddress       String
+  detail          String
+  createdAt       DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([targetPatientId, createdAt])
+}
+
+model Report {
+  id            String   @id @default(cuid())
+  reportDate    DateTime
+  type          String
+  filePathPdf   String?
+  filePathExcel String?
+  payload       String?
+  recipients    String?
+  status        String
+  createdAt     DateTime @default(now())
+}
+
+model Notification {
+  id          String    @id @default(cuid())
+  patientId   String?
+  patient     Patient?  @relation(fields: [patientId], references: [id])
+  channel     String
+  template    String
+  payload     String
+  status      String
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([status, scheduledAt])
+}
+
+model Appointment {
+  id             String   @id @default(cuid())
+  patientId      String
+  patient        Patient  @relation(fields: [patientId], references: [id])
+  doctorId       String
+  doctor         Doctor   @relation(fields: [doctorId], references: [id])
+  scheduledAt    DateTime
+  status         String
+  queueNumber    Int?
+  noShowRisk     Int?
+  reminderH3     Boolean  @default(false)
+  reminderH1     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([scheduledAt])
+}
+
+model WaitingList {
+  id           String    @id @default(cuid())
+  patientId    String
+  patient      Patient   @relation(fields: [patientId], references: [id])
+  doctorId     String?
+  doctor       Doctor?   @relation(fields: [doctorId], references: [id])
+  preferredAt  DateTime?
+  status       String
+  createdAt    DateTime  @default(now())
+}
+
+model MedicineStock {
+  id        String   @id @default(cuid())
+  name      String
+  stock     Int
+  unit      String
+  updatedAt DateTime @updatedAt
+}
+
+model Claim {
+  id        String   @id @default(cuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  visitId   String?
+  visit     Visit?   @relation(fields: [visitId], references: [id])
+  number    String   @unique
+  status    String
+  amount    Float?
+  createdAt DateTime @default(now())
+}
