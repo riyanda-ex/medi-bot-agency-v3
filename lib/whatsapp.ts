@@ -4,6 +4,8 @@
  * Default = mock. Pengiriman nyata diblokir kecuali ALLOW_REAL_OUTBOUND=true.
  */
 
+import { assertSecureEnvironment } from "@/lib/env";
+
 export type WhatsAppProviderName = "fonnte" | "wablas" | "mock";
 
 export interface OutboundResult {
@@ -21,7 +23,10 @@ export function resolveWhatsAppProvider(): WhatsAppProviderName {
 }
 
 export function isOutboundAllowed(): boolean {
-  return process.env.ALLOW_REAL_OUTBOUND === "true";
+  if (process.env.ALLOW_REAL_OUTBOUND !== "true") return false;
+  // Konfigurasi produksi divalidasi sebelum izin pengiriman nyata diberikan.
+  assertSecureEnvironment();
+  return true;
 }
 
 export function normalizePhone(phone: string): string {
@@ -65,7 +70,8 @@ export async function sendWhatsApp(to: string, message: string): Promise<Outboun
       const response = await fetch("https://api.fonnte.com/send", {
         method: "POST",
         headers: { Authorization: token, "Content-Type": "application/json" },
-        body: JSON.stringify({ target, message })
+        body: JSON.stringify({ target, message }),
+        signal: AbortSignal.timeout(10_000)
       });
       const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
       if (!response.ok) {
@@ -88,7 +94,8 @@ export async function sendWhatsApp(to: string, message: string): Promise<Outboun
     const response = await fetch(`${domain}/api/send-message`, {
       method: "POST",
       headers: { Authorization: token, "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: target, message })
+      body: JSON.stringify({ phone: target, message }),
+      signal: AbortSignal.timeout(10_000)
     });
     const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) {

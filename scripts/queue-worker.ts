@@ -9,7 +9,13 @@
 import { runAllAgents } from "../agents/orchestrator";
 import { executeUrgentFollowUp } from "../agents/urgentCaller";
 import { prisma } from "../lib/prisma";
-import { closeQueueConnections, isQueueEnabled, startQueueWorker } from "../lib/queue";
+import {
+  closeQueueConnections,
+  isQueueEnabled,
+  orchestratorJobSchema,
+  startQueueWorker,
+  urgentFollowupJobSchema
+} from "../lib/queue";
 
 async function main(): Promise<void> {
   if (!isQueueEnabled()) {
@@ -20,19 +26,23 @@ async function main(): Promise<void> {
 
   const worker = await startQueueWorker({
     "orchestrator.run": async (payload) => {
-      console.log(`[QUEUE] Menjalankan orchestrator (${payload.runId ?? "tanpa-run-id"}).`);
+      const job = orchestratorJobSchema.parse(payload);
+      console.log(`[QUEUE] Menjalankan orchestrator (${job.runId ?? "tanpa-run-id"}).`);
       return runAllAgents();
     },
     "urgent.followup": async (payload) => {
+      const job = urgentFollowupJobSchema.parse(payload);
       const stages = await executeUrgentFollowUp({
-        patientId: payload.patientId,
-        visitId: payload.visitId,
-        triageLogId: payload.triageLogId,
-        actorId: payload.actorId,
-        approvedBy: payload.approvedBy,
-        simulate: payload.simulate
+        patientId: job.patientId,
+        visitId: job.visitId,
+        triageLogId: job.triageLogId,
+        actorId: job.actorId,
+        approvalId: job.approvalId,
+        approvedBy: job.approvedBy,
+        simulate: job.simulate,
+        stageOffset: job.stageOffset
       });
-      return { patientId: payload.patientId, stages: stages.length };
+      return { patientId: job.patientId, stages: stages.length };
     }
   });
 

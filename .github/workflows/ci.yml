@@ -1,28 +1,36 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
   pull_request:
 
 env:
+  # Nilai berikut hanya untuk CI, bukan kunci produksi. Panjang >= 32 byte.
   NEXTAUTH_URL: http://localhost:3000
-  NEXTAUTH_SECRET: ci-only-secret-not-for-production-1234567890
-  FIELD_ENCRYPTION_KEY: ci-only-field-key-not-for-production-1234567890
+  NEXTAUTH_SECRET: Zk9pQ2xVnM4dR7sY1uJ6hB3tK8wE5aN0cF2oL9zX4vU
+  FIELD_ENCRYPTION_KEY: Vm8tR5xQ2pL7nB4sW1yK9dJ6hF3aN0cE8uZ1oX5vT7qR
   SYNC_MODE: "true"
   ALLOW_REAL_OUTBOUND: "false"
   REQUIRE_HUMAN_APPROVAL: "true"
   WHATSAPP_PROVIDER: mock
   PHONE_PROVIDER: mock
   QUEUE_MODE: sync
+  # Kredensial uji produksi di CI saja: kuat, throwaway, dan tidak dipakai di runtime nyata.
+  ALLOW_SEED: "true"
+  SEED_PASSWORD: Tn8wQ3xR6mV2kP9sY4dH7bJ1fL5cZ0aG
+  E2E_PASSWORD: Tn8wQ3xR6mV2kP9sY4dH7bJ1fL5cZ0aG
 
 jobs:
   verify-windows:
     name: Verifikasi Windows PowerShell
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -52,20 +60,21 @@ jobs:
           --health-retries 10
       redis:
         image: redis:7-alpine
+        command: ["redis-server", "--appendonly", "yes", "--requirepass", "medibot_ci_redis_password"]
         ports:
           - 6379:6379
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "redis-cli -a medibot_ci_redis_password ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
       DATABASE_URL: postgresql://medibot:medibot_ci_password@localhost:5432/medibot?schema=public
-      DATABASE_PROVIDER: postgresql
-      REDIS_URL: redis://localhost:6379
+      REDIS_URL: redis://:medibot_ci_redis_password@localhost:6379
+      SYNC_MODE: "false"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -90,3 +99,68 @@ jobs:
       - name: Hentikan server
         if: always()
         run: kill $(cat server.pid) || true
+
+  verify-redis-queue:
+    name: Verifikasi worker BullMQ terpisah
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: medibot
+          POSTGRES_USER: medibot
+          POSTGRES_PASSWORD: medibot_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medibot -d medibot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        command: ["redis-server", "--appendonly", "yes", "--requirepass", "medibot_ci_redis_password"]
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli -a medibot_ci_redis_password ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://medibot:medibot_ci_password@localhost:5432/medibot?schema=public
+      REDIS_URL: redis://:medibot_ci_redis_password@localhost:6379
+      SYNC_MODE: "false"
+      QUEUE_MODE: redis
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate:pg
+      - run: npx prisma db push --schema prisma/schema.postgres.prisma
+      - run: npm run db:seed
+      - run: npm run build
+      - name: Jalankan worker dan server
+        run: |
+          nohup npm run queue:worker > worker.log 2>&1 &
+          echo $! > worker.pid
+          nohup npm run start -- -p 3000 > server.log 2>&1 &
+          echo $! > server.pid
+      - name: Tunggu worker dan server siap
+        run: |
+          for i in $(seq 1 30); do
+            if grep -q "Worker aktif" worker.log && curl -fsS http://localhost:3000/login > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat worker.log
+          cat server.log
+          exit 1
+      - run: npm run queue:check
+      - name: Hentikan proses
+        if: always()
+        run: |
+          kill $(cat server.pid) || true
+          kill $(cat worker.pid) || true

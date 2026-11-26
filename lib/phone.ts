@@ -4,7 +4,7 @@
  * Teks yang diucapkan TIDAK pernah memuat diagnosis pasien.
  */
 
-import { OutboundResult, isOutboundAllowed, normalizePhone } from "@/lib/whatsapp";
+import { isOutboundAllowed, normalizePhone, type OutboundResult } from "@/lib/whatsapp";
 
 export type PhoneProviderName = "twilio" | "mock";
 
@@ -66,7 +66,8 @@ export async function callPatient(to: string, spokenMessage: string): Promise<Ou
           Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
           "Content-Type": "application/x-www-form-urlencoded"
         },
-        body
+        body,
+        signal: AbortSignal.timeout(10_000)
       }
     );
     const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;

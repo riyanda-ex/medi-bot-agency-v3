@@ -13,6 +13,7 @@
     "verify:agents": "tsx scripts/verify-agents.ts",
     "queue:worker": "tsx scripts/queue-worker.ts",
     "e2e": "node scripts/e2e-check.mjs",
+    "queue:check": "node scripts/queue-check.mjs",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:generate:pg": "node scripts/sync-postgres-schema.mjs && prisma generate --schema prisma/schema.postgres.prisma",
     "db:push": "prisma db push --schema prisma/schema.prisma",

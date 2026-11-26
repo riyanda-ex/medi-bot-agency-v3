@@ -50,6 +50,7 @@ export function TriageForm({ patients }: { patients: PatientOption[] }) {
   const [values, setValues] = useState<FormValues>(emptyValues);
   const [result, setResult] = useState<TriageResponse | null>(null);
   const [stages, setStages] = useState<SimulateStage[]>([]);
+  const [approvalId, setApprovalId] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -78,7 +79,8 @@ export function TriageForm({ patients }: { patients: PatientOption[] }) {
       body: JSON.stringify({
         patientId,
         complaint: "Input dari halaman triage",
-        vitals: buildVitals()
+        vitals: buildVitals(),
+        approvalId: approvalId.trim() || undefined
       })
     });
     const payload = (await response.json()) as TriageResponse & { error?: string };
@@ -116,7 +118,8 @@ export function TriageForm({ patients }: { patients: PatientOption[] }) {
       <header>
         <h1 className="text-2xl font-semibold">Triage Pasien</h1>
         <p className="text-sm text-muted-foreground">
-          Hasil MERAH muncul segera setelah submit. Semua pesan keluar bersifat simulasi.
+          Hasil MERAH muncul segera setelah submit. Default semua pesan bersifat simulasi; pengiriman
+          nyata hanya berjalan dengan ALLOW_REAL_OUTBOUND=true dan approval DOKTER/ADMIN.
         </p>
       </header>
 
@@ -151,6 +154,17 @@ export function TriageForm({ patients }: { patients: PatientOption[] }) {
             </label>
           ))}
         </div>
+
+        <label className="block text-sm font-medium">
+          Approval ID (opsional, untuk pengiriman nyata)
+          <input
+            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+            type="text"
+            placeholder="Apr-... (dari panel approval)"
+            value={approvalId}
+            onChange={(event) => setApprovalId(event.target.value)}
+          />
+        </label>
 
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <Button type="submit" disabled={loading || !patientId}>

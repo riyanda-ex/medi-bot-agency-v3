@@ -23,6 +23,8 @@ model User {
   doctorId     String?
   doctor       Doctor?    @relation("UserDoctor", fields: [doctorId], references: [id])
   lastLoginAt  DateTime?
+  tokenVersion Int        @default(0)
+  status       String     @default("AKTIF")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   auditLogs    AuditLog[] @relation("AuditActor")
@@ -214,10 +216,15 @@ model AuditLog {
   actorId         String
   actor           User     @relation("AuditActor", fields: [actorId], references: [id])
   action          String
+  role            String?
   targetPatientId String?
   targetPatient   Patient? @relation("AuditTarget", fields: [targetPatientId], references: [id])
   ipAddress       String
+  method          String?
+  path            String?
+  userAgent       String?
   detail          String
+  signature       String?
   createdAt       DateTime @default(now())
 
   @@index([actorId, createdAt])

@@ -1,5 +1,15 @@
-export const ROLES = ["ADMIN", "DOKTER", "PERAWAT", "RESEPSIONIS", "PASIEN"] as const;
+export const ROLES = [
+  "ADMIN",
+  "DOKTER",
+  "PERAWAT",
+  "RESEPSIONIS",
+  "PASIEN",
+  "TIDAK_AKTIF"
+] as const;
 export type Role = (typeof ROLES)[number];
+
+/** Peran fail-closed untuk sesi tidak sah atau peran yang tidak dikenal. */
+export const TIDAK_AKTIF: Role = "TIDAK_AKTIF";
 
 export const PERMISSIONS: Record<Role, readonly string[]> = {
   ADMIN: [
@@ -12,7 +22,8 @@ export const PERMISSIONS: Record<Role, readonly string[]> = {
     "audit:read",
     "appointment:read",
     "appointment:write",
-    "agent:run"
+    "agent:run",
+    "outbound:approve"
   ],
   DOKTER: [
     "patient:read",
@@ -21,19 +32,25 @@ export const PERMISSIONS: Record<Role, readonly string[]> = {
     "triage:write",
     "prescription:write",
     "report:read",
-    "appointment:read"
+    "appointment:read",
+    "outbound:approve"
   ],
   PERAWAT: ["patient:read", "triage:read", "triage:write", "appointment:read"],
   RESEPSIONIS: ["appointment:read", "appointment:write", "queue:read"],
-  PASIEN: ["own:read", "own:appointment"]
+  PASIEN: ["own:read", "own:appointment"],
+  TIDAK_AKTIF: []
 };
 
+/**
+ * Fail-closed: peran yang tidak dikenal tidak mendapat izin apa pun.
+ * Tidak jatuh ke RESEPSIONIS karena peran itu memiliki izin appointment/queue.
+ */
 export function normalizeRole(value: unknown): Role {
-  return ROLES.includes(value as Role) ? (value as Role) : "RESEPSIONIS";
+  return ROLES.includes(value as Role) ? (value as Role) : "TIDAK_AKTIF";
 }
 
 export function hasPermission(role: Role, permission: string): boolean {
-  return PERMISSIONS[role].includes(permission);
+  return PERMISSIONS[role]?.includes(permission) ?? false;
 }
 
 export function canViewDiagnosis(role: Role): boolean {
@@ -46,4 +63,8 @@ export function canViewTriage(role: Role): boolean {
 
 export function canAccessAudit(role: Role): boolean {
   return hasPermission(role, "audit:read");
+}
+
+export function canApproveOutbound(role: Role): boolean {
+  return hasPermission(role, "outbound:approve");
 }

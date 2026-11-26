@@ -4,29 +4,49 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { decryptField, maskNik, maskPhone } from "@/lib/crypto";
+import { decryptField, maskNik, maskPhone, signPayload } from "@/lib/crypto";
 import { type Role, hasPermission, canViewDiagnosis } from "@/lib/rbac";
+import { isPlaceholderSecret } from "@/lib/env";
 import { writeAgentLog } from "@/lib/agentLog";
 
 export const AUDIT_RETENTION_DAYS = 365;
 
 export interface AccessContext {
   actorId: string;
-  role: Role;
+  role: Role | "ANONYMOUS";
   action: string;
   ip: string;
   targetPatientId?: string;
   detail?: string;
+  method?: string;
+  path?: string;
+  userAgent?: string;
 }
 
+/** Tulis audit dengan tanda tangan HMAC agar perubahan diam-diam terdeteksi. */
 export async function auditAccess(context: AccessContext): Promise<void> {
+  const detail = context.detail ?? "";
+  const canonical = [
+    context.actorId,
+    context.role,
+    context.action,
+    context.ip,
+    context.targetPatientId ?? "-",
+    detail
+  ].join("|");
+
   await prisma.auditLog.create({
     data: {
       actorId: context.actorId,
+      role: context.role,
       action: context.action,
       ipAddress: context.ip,
       targetPatientId: context.targetPatientId,
-      detail: context.detail ?? ""
+      method: context.method ?? "-",
+      path: context.path ?? "-",
+      userAgent: context.userAgent ?? "-",
+      detail,
+      signature: signPayload(canonical)
     }
   });
 }
@@ -105,7 +125,7 @@ export async function runSecurityGuard(): Promise<SecurityStatus> {
   }
 
   const status: SecurityStatus = {
-    encryptionKeyConfigured: key.length > 0 && !key.includes("GANTI_"),
+    encryptionKeyConfigured: !isPlaceholderSecret(key) && key.length >= 32,
     syncMode: process.env.SYNC_MODE === "true",
     outboundAllowed: process.env.ALLOW_REAL_OUTBOUND === "true",
     auditRetentionDays: AUDIT_RETENTION_DAYS,
@@ -116,7 +136,11 @@ export async function runSecurityGuard(): Promise<SecurityStatus> {
   await writeAgentLog({
     agentName: "SECURITY_GUARD",
     status: "SUCCESS",
-    message: `Pemeriksaan keamanan: ${JSON.stringify(status)}`
+    message: `Pemeriksaan keamanan: ${JSON.stringify({
+      ...status,
+      encryptionKeyConfigured: status.encryptionKeyConfigured,
+      auditRetentionDays: status.auditRetentionDays
+    })}`
   });
 
   return status;

@@ -13,6 +13,8 @@ import ExcelJS from "exceljs";
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
 import { writeAgentLog } from "@/lib/agentLog";
+import { verifyApproval } from "@/lib/approval";
+import { publicReportName } from "@/lib/reportFiles";
 
 export interface DailyReportData {
   date: string;
@@ -178,23 +180,45 @@ export async function generateReportExcel(data: DailyReportData, filePath: strin
   ];
   chart.addRows(data.visits7Days);
 
+  // ExcelJS 4.4 tidak memiliki API addChart. Data bar conditional formatting
+  // memberikan visualisasi batang nyata di dalam sel tanpa library tambahan.
+  // Typing packaged tidak memuat `color` pada DataBarRuleType, tetapi xform XLSX
+  // merendernya; tipe lokal dipakai agar tidak mengubah dependency.
+  type FormattedRule = Parameters<typeof chart.addConditionalFormatting>[0]["rules"][number];
+  const dataBarRule = {
+    type: "dataBar",
+    cfvo: [{ type: "min" }, { type: "max" }],
+    color: { rgb: "FF10B981" }
+  } as unknown as FormattedRule;
+  chart.addConditionalFormatting({ ref: "B2:B8", rules: [dataBarRule] });
+
   await workbook.xlsx.writeFile(filePath);
 }
 
 export async function sendReportEmail(
   attachments: string[],
-  recipient: string
+  recipient: string,
+  resourceId: string,
+  approvalId?: string
 ): Promise<{ sent: boolean; simulated: boolean; detail: string }> {
-  const canSend =
+  const outboundRequested =
     process.env.ALLOW_REAL_OUTBOUND === "true" &&
     Boolean(process.env.SMTP_HOST) &&
     process.env.SYNC_MODE !== "true";
 
-  if (!canSend) {
+  let approvalOk = false;
+  let approvalReason = "Email mock: pengiriman nyata tidak diminta.";
+  if (outboundRequested) {
+    const approval = await verifyApproval(approvalId, "REPORT", resourceId);
+    approvalOk = approval.ok;
+    approvalReason = approval.reason;
+  }
+
+  if (!outboundRequested || !approvalOk) {
     return {
       sent: false,
       simulated: true,
-      detail: `Email mock ke ${recipient}. Set ALLOW_REAL_OUTBOUND=true dan SMTP_HOST untuk pengiriman nyata.`
+      detail: `Email mock ke ${recipient}. ${approvalReason}`
     };
   }
 
@@ -228,7 +252,10 @@ export interface ReporterRunResult {
   email: { sent: boolean; simulated: boolean; detail: string };
 }
 
-export async function runReporter(date: Date = new Date()): Promise<ReporterRunResult> {
+export async function runReporter(
+  date: Date = new Date(),
+  approvalId?: string
+): Promise<ReporterRunResult> {
   const startedAt = Date.now();
   const data = await buildDailyReport(date);
   const dir = path.join(process.cwd(), "reports", data.date);
@@ -238,7 +265,7 @@ export async function runReporter(date: Date = new Date()): Promise<ReporterRunR
   await Promise.all([generateReportPdf(data, pdfPath), generateReportExcel(data, excelPath)]);
 
   const recipient = process.env.ALERT_EMAIL ?? "pimpinan@klinik.example";
-  const email = await sendReportEmail([pdfPath, excelPath], recipient);
+  const email = await sendReportEmail([pdfPath, excelPath], recipient, data.date, approvalId);
 
   const report = await prisma.report.create({
     data: {
@@ -260,5 +287,11 @@ export async function runReporter(date: Date = new Date()): Promise<ReporterRunR
     runId: report.id
   });
 
-  return { reportId: report.id, data, files: { pdf: pdfPath, excel: excelPath }, email };
+  // Jangan mengembalikan path absolut server ke klien.
+  return {
+    reportId: report.id,
+    data,
+    files: { pdf: publicReportName(pdfPath), excel: publicReportName(excelPath) },
+    email
+  };
 }

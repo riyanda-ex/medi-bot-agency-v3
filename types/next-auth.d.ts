@@ -8,6 +8,7 @@ declare module "next-auth" {
       role: Role;
       patientId?: string;
       doctorId?: string;
+      invalid?: boolean;
     } & DefaultSession["user"];
   }
 
@@ -16,6 +17,7 @@ declare module "next-auth" {
     role: string;
     patientId?: string | null;
     doctorId?: string | null;
+    tokenVersion?: number;
   }
 }
 
@@ -24,5 +26,7 @@ declare module "next-auth/jwt" {
     role?: string;
     patientId?: string;
     doctorId?: string;
+    tokenVersion?: number;
+    invalid?: boolean;
   }
 }

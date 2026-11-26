@@ -1,15 +1,15 @@
 /**
  * Guard handler API. Mengembalikan true bila role diizinkan.
- * Dihasilkan oleh Bug Hunter untuk endpoint yang sebelumnya tanpa auth.
+ * Peran tidak dikenal dinormalisasi menjadi TIDAK_AKTIF (tanpa izin).
  */
-import { PERMISSIONS, type Role } from "../lib/rbac";
+import { PERMISSIONS, normalizeRole, type Role } from "../lib/rbac";
 
 export function isRoleAllowed(role: Role, permission: string): boolean {
-  return PERMISSIONS[role].includes(permission);
+  return PERMISSIONS[role]?.includes(permission) ?? false;
 }
 
 export function requirePermission(role: unknown, permission: string): void {
-  const normalized = (role ?? "RESEPSIONIS") as Role;
+  const normalized = normalizeRole(role);
   if (!isRoleAllowed(normalized, permission)) {
     throw new Error(`Akses ditolak: ${permission} tidak tersedia untuk ${normalized}.`);
   }

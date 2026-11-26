@@ -8,7 +8,7 @@ import { runAllAgents } from "@/agents/orchestrator";
 
 export async function POST(request: Request): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "RESEPSIONIS";
+  const role = session?.user.role ?? "TIDAK_AKTIF";
 
   if (!hasPermission(role, "agent:run")) {
     await auditApiAccess({

@@ -7,6 +7,7 @@
 import { prisma } from "@/lib/prisma";
 import { decryptField } from "@/lib/crypto";
 import { writeAgentLog } from "@/lib/agentLog";
+import { isOutboundAllowed, sendWhatsApp } from "@/lib/whatsapp";
 
 const EDUCATION_KEYWORDS = ["obat", "kontrol", "antrian", "dokter", "jadwal", "edukasi"];
 const FALLBACK_REPLY =
@@ -69,6 +70,13 @@ export async function scheduleMedicationReminders(day: Date = new Date()): Promi
   return created;
 }
 
+/** Hitung selisih hari kalender WIB, bukan selisih 24 jam mentah. */
+function daysLeftWib(target: Date, now: Date): number {
+  const key = (value: Date): number =>
+    Date.parse(new Date(value.getTime() + 7 * 3_600_000).toISOString().slice(0, 10));
+  return Math.round((key(target) - key(now)) / 86_400_000);
+}
+
 export async function scheduleControlReminders(now: Date = new Date()): Promise<number> {
   const appointments = await prisma.appointment.findMany({
     where: { status: { in: ["BOOKED", "CONFIRMED"] } },
@@ -77,7 +85,7 @@ export async function scheduleControlReminders(now: Date = new Date()): Promise<
   let created = 0;
 
   for (const appointment of appointments) {
-    const daysLeft = Math.round((appointment.scheduledAt.getTime() - now.getTime()) / 86_400_000);
+    const daysLeft = daysLeftWib(appointment.scheduledAt, now);
     const templates = daysLeft === 3 && !appointment.reminderH3 ? ["KONTROL_H3"] : [];
     if (daysLeft === 1 && !appointment.reminderH1) templates.push("KONTROL_H1");
 
@@ -210,10 +218,53 @@ export async function predictNoShow(appointmentId: string): Promise<{
   return { appointmentId, risk, extraReminder };
 }
 
+/**
+ * Dispatcher pengingat jatuh tempo. Pengiriman nyata sengaja tidak otomatis:
+ * bila ALLOW_REAL_OUTBOUND=true, notifikasi ditandai NEEDS_APPROVAL agar tetap
+ * melalui alur approval manusia yang sama dengan urgent/report.
+ */
+export async function dispatchDueNotifications(now: Date = new Date()): Promise<{
+  processed: number;
+  sent: number;
+  pendingApproval: number;
+}> {
+  const due = await prisma.notification.findMany({
+    where: { status: "SCHEDULED", scheduledAt: { lte: now } },
+    include: { patient: { select: { phoneEncrypted: true } } },
+    take: 100
+  });
+
+  let sent = 0;
+  let pendingApproval = 0;
+  const outboundConfigured = isOutboundAllowed();
+
+  for (const notification of due) {
+    if (outboundConfigured) {
+      await prisma.notification.update({
+        where: { id: notification.id },
+        data: { status: "NEEDS_APPROVAL" }
+      });
+      pendingApproval += 1;
+      continue;
+    }
+
+    const phone = decryptField(notification.patient?.phoneEncrypted ?? "");
+    const result = await sendWhatsApp(phone, notification.payload);
+    await prisma.notification.update({
+      where: { id: notification.id },
+      data: { status: result.ok ? "SENT" : "FAILED", sentAt: new Date() }
+    });
+    if (result.ok) sent += 1;
+  }
+
+  return { processed: due.length, sent, pendingApproval };
+}
+
 export async function runEngagement(): Promise<{
   medicationReminders: number;
   controlReminders: number;
   highRiskAppointments: number;
+  notifications: { processed: number; sent: number; pendingApproval: number };
 }> {
   const [medicationReminders, controlReminders] = await Promise.all([
     scheduleMedicationReminders(),
@@ -226,10 +277,12 @@ export async function runEngagement(): Promise<{
     predictions.push(await predictNoShow(appointment.id));
   }
 
+  const notifications = await dispatchDueNotifications();
   const result = {
     medicationReminders,
     controlReminders,
-    highRiskAppointments: predictions.filter((item) => item.risk > 60).length
+    highRiskAppointments: predictions.filter((item) => item.risk > 60).length,
+    notifications
   };
 
   await writeAgentLog({

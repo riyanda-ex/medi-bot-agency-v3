@@ -5,11 +5,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   const { pathname } = request.nextUrl;
 
-  if (!token) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  if (!token || token.invalid === true) {
+    return NextResponse.redirect(new URL("/login?error=sesi", request.url));
   }
 
-  const role = String(token.role ?? "RESEPSIONIS");
+  const role = String(token.role ?? "TIDAK_AKTIF");
   if (pathname.startsWith("/audit") && role !== "ADMIN") {
     return NextResponse.redirect(new URL("/dashboard?error=akses", request.url));
   }

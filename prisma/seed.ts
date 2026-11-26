@@ -2,6 +2,7 @@ import { PrismaClient, type Doctor, type Patient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { encryptField, fieldHash, maskNik } from "../lib/crypto";
 import { evaluateTriage } from "../lib/triageRules";
+import { isProductionRuntime, isProductionSecret } from "../lib/env";
 
 const prisma = new PrismaClient();
 
@@ -133,6 +134,18 @@ function makePatients(): DummyPatient[] {
 }
 
 async function main(): Promise<void> {
+  const production = isProductionRuntime();
+  if (production && process.env.ALLOW_SEED !== "true") {
+    throw new Error(
+      "Seeding diblokir di produksi. Set ALLOW_SEED=true hanya jika Anda sengaja mengisi ulang data uji."
+    );
+  }
+
+  const seedPassword = process.env.SEED_PASSWORD ?? "password123";
+  if (production && !isProductionSecret(seedPassword)) {
+    throw new Error("Produksi mensyaratkan SEED_PASSWORD acak minimal 32 byte untuk akun uji.");
+  }
+
   console.log("[SEED] Membersihkan data dummy sebelumnya...");
   await prisma.urgentCall.deleteMany();
   await prisma.triageLog.deleteMany();
@@ -152,7 +165,7 @@ async function main(): Promise<void> {
   await prisma.medicineStock.deleteMany();
   await prisma.patient.deleteMany();
 
-  const passwordHash = await bcrypt.hash("password123", 10);
+  const passwordHash = await bcrypt.hash(seedPassword, production ? 12 : 10);
 
   const doctors: Doctor[] = [];
   for (const [name, specialty] of [
@@ -395,7 +408,11 @@ async function main(): Promise<void> {
   });
 
   console.log("[SEED] Selesai: 20 pasien, 3 MERAH, 5 KUNING, 12 HIJAU.");
-  console.log("[SEED] Login uji: dokter@klinik.example / resepsionis@klinik.example / password123");
+  if (production) {
+    console.log("[SEED] Akun uji memakai SEED_PASSWORD dari environment (tidak ditampilkan di log).");
+  } else {
+    console.log("[SEED] Login uji lokal: dokter@klinik.example / resepsionis@klinik.example / password123");
+  }
 }
 
 main()

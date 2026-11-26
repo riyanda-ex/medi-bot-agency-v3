@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("dokter@klinik.example");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -19,7 +19,7 @@ export default function LoginPage() {
     const result = await signIn("credentials", { email, password, redirect: false });
     setLoading(false);
     if (result?.error) {
-      setError("Email atau kata sandi salah.");
+      setError("Email atau kata sandi salah, atau terlalu banyak percobaan. Coba lagi nanti.");
       return;
     }
     router.push("/dashboard");
@@ -43,6 +43,7 @@ export default function LoginPage() {
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            autoComplete="username"
             required
           />
         </label>
@@ -53,6 +54,7 @@ export default function LoginPage() {
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            autoComplete="current-password"
             required
           />
         </label>
@@ -61,7 +63,7 @@ export default function LoginPage() {
           {loading ? "Memproses..." : "Masuk"}
         </Button>
         <p className="text-xs text-muted-foreground">
-          Akun uji (seed): dokter@klinik.example, resepsionis@klinik.example — kata sandi password123.
+          Akun uji untuk pengembangan tercantum di README. Jangan memakai kredensial uji di produksi.
         </p>
       </form>
     </main>

@@ -1,26 +1,58 @@
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { canAccessAudit, canViewDiagnosis, canViewTriage } from "@/lib/rbac";
+import { canAccessAudit, canApproveOutbound, canViewDiagnosis, canViewTriage } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { ManualRunButton } from "@/components/manual-run-button";
+import { ApprovalPanel } from "@/components/approval-panel";
+
+async function distinctPatientCount(level: string): Promise<number> {
+  const rows = await prisma.triageLog.findMany({
+    where: { level },
+    distinct: ["patientId"],
+    select: { id: true }
+  });
+  return rows.length;
+}
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "RESEPSIONIS";
+  const role = session?.user.role ?? "TIDAK_AKTIF";
 
-  const [patients, redCount, yellowCount, greenCount, urgentCalls, recent] = await Promise.all([
+  const [patients, redCount, yellowCount, greenCount, urgentCalls, recent, latestDiagnosis] = await Promise.all([
     prisma.patient.count(),
-    prisma.triageLog.count({ where: { level: "MERAH" } }),
-    prisma.triageLog.count({ where: { level: "KUNING" } }),
-    prisma.triageLog.count({ where: { level: "HIJAU" } }),
+    distinctPatientCount("MERAH"),
+    distinctPatientCount("KUNING"),
+    distinctPatientCount("HIJAU"),
     prisma.urgentCall.count({ where: { simulated: true } }),
     prisma.triageLog.findMany({
       orderBy: { createdAt: "desc" },
       take: 6,
       include: { patient: { select: { name: true, nikMasked: true } } }
-    })
+    }),
+    canViewDiagnosis(role)
+      ? prisma.visit.findFirst({
+          where: { diagnosis: { not: null } },
+          orderBy: { visitDate: "desc" },
+          select: {
+            diagnosis: true,
+            icd10: true,
+            patient: { select: { name: true, nikMasked: true } }
+          }
+        })
+      : Promise.resolve(null)
   ]);
+
+  const pendingUrgent = canApproveOutbound(role)
+    ? recent
+        .filter((item) => item.level === "MERAH")
+        .map((item) => ({
+          id: item.id,
+          patientName: item.patient.name,
+          level: item.level,
+          createdAt: item.createdAt.toLocaleString("id-ID")
+        }))
+    : [];
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-8">
@@ -49,6 +81,9 @@ export default async function DashboardPage() {
       </section>
 
       {role === "ADMIN" ? <ManualRunButton /> : null}
+      {canApproveOutbound(role) ? (
+        <ApprovalPanel pendingUrgent={pendingUrgent} today={new Date().toISOString().slice(0, 10)} />
+      ) : null}
 
       <section className="rounded-lg border p-4">
         <h2 className="font-semibold">Hak akses Anda</h2>
@@ -57,6 +92,12 @@ export default async function DashboardPage() {
           <li>Lihat triage: {canViewTriage(role) ? "IZIN" : "DITOLAK"}</li>
           <li>Audit log: {canAccessAudit(role) ? "IZIN" : "DITOLAK"}</li>
         </ul>
+        {latestDiagnosis ? (
+          <p className="mt-3 rounded bg-slate-50 p-3 text-sm">
+            Diagnosis pasien: <strong>{latestDiagnosis.patient.name}</strong> — {latestDiagnosis.diagnosis}{" "}
+            ({latestDiagnosis.icd10 ?? "-"}) — NIK {latestDiagnosis.patient.nikMasked}
+          </p>
+        ) : null}
       </section>
 
       <section className="rounded-lg border p-4">

@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(request: Request): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "RESEPSIONIS";
+  const role = session?.user.role ?? "TIDAK_AKTIF";
 
   if (!hasPermission(role, "patient:read") && !hasPermission(role, "triage:write")) {
     await auditApiAccess({

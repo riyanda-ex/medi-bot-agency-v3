@@ -24,15 +24,16 @@ const vitalsSchema = z.object({
 const bodySchema = z.object({
   patientId: z.string().min(1),
   complaint: z.string().max(500).optional(),
+  approvalId: z.string().min(1).optional(),
   vitals: vitalsSchema
 });
 
 export async function POST(request: Request): Promise<NextResponse> {
   const startedAt = Date.now();
   const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "RESEPSIONIS";
+  const role = session?.user.role ?? "TIDAK_AKTIF";
 
-  if (!hasPermission(role, "triage:read")) {
+  if (!hasPermission(role, "triage:write")) {
     await auditApiAccess({
       request,
       session,
@@ -79,7 +80,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     patientId: patient.id,
     visitId: visit.id,
     source: "DASHBOARD_TRIAGE",
-    actorId: session?.user.id
+    actorId: session?.user.id,
+    approvalId: parsed.data.approvalId
   });
 
   await writeAgentLog({

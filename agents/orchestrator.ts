@@ -145,16 +145,22 @@ export function startScheduler(): ScheduledTask[] {
   if (process.env.ENABLE_SCHEDULER !== "true") return scheduledTasks;
   if (scheduledTasks.length > 0) return scheduledTasks;
 
+  const allAgentsCron = process.env.CRON_ALL_AGENTS || "0 7,12,18,22 * * *";
+  const redCheckCron = process.env.CRON_RED_CHECK || "*/5 * * * *";
+  if (!cron.validate(allAgentsCron) || !cron.validate(redCheckCron)) {
+    throw new Error("CRON_ALL_AGENTS atau CRON_RED_CHECK bukan ekspresi cron yang valid.");
+  }
+
   scheduledTasks = [
     cron.schedule(
-      "0 7,12,18,22 * * *",
+      allAgentsCron,
       () => {
         void runAllAgents();
       },
       { timezone: "Asia/Jakarta" }
     ),
     cron.schedule(
-      "*/5 * * * *",
+      redCheckCron,
       () => {
         void checkRedPatients(`red-${Date.now()}`);
       },

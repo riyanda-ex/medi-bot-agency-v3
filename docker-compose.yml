@@ -1,6 +1,7 @@
 # Layanan produksi: PostgreSQL + Redis.
 # Jalankan: docker compose up -d
 # Untuk mode testing Windows tanpa Docker, file ini TIDAK dibutuhkan.
+# Port hanya di-bind ke loopback; jangan expose ke jaringan publik.
 
 services:
   postgres:
@@ -9,9 +10,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-medibot}
       POSTGRES_USER: ${POSTGRES_USER:-medibot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-GANTI_PASSWORD_PRODUKSI}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di .env}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -23,13 +24,15 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD wajib diisi di .env}
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD wajib diisi di .env}"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 5s
       timeout: 5s
       retries: 10
