@@ -125,8 +125,9 @@ sesuai UU PDP No. 27/2022.
 
 ## 8. Hak kekayaan intelektual
 
-- `LICENSE` — lisensi **proprietary v2.0 diperkuat**: tanpa lisensi default, Lisensi Evaluasi
-  revokabel, larangan reverse engineering/publicity, kerahasiaan, ganti rugi, dan hukum Indonesia.
+- `LICENSE` — lisensi **komersial proprietary v3.0 final**: Pemilik ditetapkan sebagai
+  akun GitHub `riyanda-ex`, tanpa lisensi default, Lisensi Evaluasi revokabel, larangan
+  reverse engineering/publicity, rahasia dagang, ganti rugi, dan hukum Indonesia.
 - `PATENT.md` — status paten, draft invensi, draf klaim, dan checklist pengajuan DGIP.
 
 **Paten belum diajukan/diberikan.** Jangan memakai label “PATENT PENDING” atau
