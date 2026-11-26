@@ -1,62 +1,156 @@
-# LISENSI PROPRIETARI — MEDI-BOT AGENCY v3
+# LISENSI PERANGKAT LUNAK PROPRIETARY — VERSI DIPERKUAT
 
-Copyright (c) 2026 Pemilik Proyek MEDI-BOT AGENCY v3.
+MEDI-BOT AGENCY v3 — License v2.0
+
+Copyright (c) 2026 `[NAMA_BADAN_HUKUM]` ("Pemilik").
+
 **Seluruh hak dilindungi — All rights reserved.**
 
-> Dokumen ini adalah lisensi proprietary/default. Sebelum dipakai secara komersial,
-> ganti "Pemilik Proyek MEDI-BOT AGENCY v3" dengan nama/identitas badan hukum yang sah
-> dan isi kontak pada bagian 6. Ini bukan nasihat hukum.
-
-## 1. Tidak ada lisensi yang diberikan
-
-Tanpa perjanjian tertulis yang ditandatangani oleh pemilik hak, tidak ada pihak mana pun
-yang diberi hak untuk:
-
-- menggunakan, menyalin, memodifikasi, atau menggabungkan kode ini;
-- mendistribusikan, menjual, menyewakan, atau memamerkan kode ini;
-- membuat karya turunan, paket, layanan, atau produk berbasis kode ini;
-- menghapus atau mengubah pemberitahuan hak cipta, merek, atau lisensi ini.
-
-Semua hak yang tidak secara eksplisit diberikan **tetap berada pada pemilik**.
-
-## 2. Tidak ada lisensi paten
-
-Dokumen ini **tidak memberikan lisensi paten**, baik tersurat maupun tersirat.
-Dokumen ini juga **tidak menyatakan** bahwa paten telah diajukan, sedang diproses,
-atau telah diberikan. Status paten yang sah hanya dapat dibuktikan dengan dokumen
-resmi dari otoritas paten yang berwenang.
-
-Lihat `PATENT.md` untuk status dan berkas persiapan pengajuan.
-
-## 3. Batasan penggunaan
-
-Kode ini disediakan untuk evaluasi internal dan pengembangan oleh pemilik proyek.
-Sistem ini adalah **pendukung keputusan**, bukan alat medis tersertifikasi, dan tidak
-boleh dipakai untuk pasien nyata sebelum validasi klinis, review hukum, dan persetujuan
-regulasi selesai.
-
-## 4. Tanpa jaminan
-
-Perangkat lunak disediakan **"sebagaimana adanya" / "as is"**, tanpa jaminan
-kepemilikan, keamanan, kesesuaian untuk tujuan tertentu, atau bebas pelanggaran hak
-pihak ketiga. Pemilik tidak menjamin bahwa penggunaan sistem ini akan melindungi
-dari segala risiko hukum, klinis, atau komersial.
-
-## 5. Pelanggaran
-
-Penggunaan tanpa izin dapat merupakan pelanggaran hak cipta, merek, rahasia dagang,
-dan/atau hukum terkait lainnya. Pemilik berhak menempuh upaya hukum yang tersedia.
-
-## 6. Kontak lisensi
-
-Isi sebelum penggunaan nyata:
-
-- Pemilik / badan hukum: `[NAMA_BADAN_HUKUM]`
-- Alamat: `[ALAMAT]`
-- Email lisensi: `[EMAIL_LISENSI]`
+> **PENTING:** Isi semua field dalam tanda `[...]` sebelum dipakai secara nyata.
+> Dokumen ini bukan nasihat hukum, bukan perjanjian yang ditandatangani, dan tidak
+> menciptakan paten. Untuk perlindungan maksimal, minta peninjauan notaris/konsultan
+> hukum dan ajukan paten terpisah melalui DGIP. Lihat `PATENT.md`.
 
 ---
 
-Versi lisensi ini dapat diganti, misalnya ke Apache-2.0 bila ingin mencantumkan
-*patent grant* eksplisit untuk kontributor/open source. Perubahan harus dicatat
-dalam commit terpisah dan disetujui pemilik.
+## 1. Definisi
+
+- **Kode** — seluruh source code,objek,kode biner,skema database,model AI/agent,
+  konfigurasi,dokumentasi,template pesan,gambar,script,dan karya turunannya dalam
+  repositori ini.
+- **Pemilik** — pihak yang memegang seluruh hak atas Kode sebagaimana dicantumkan
+  pada bagian 13.
+- **Pengguna** — pihak mana pun yang mengakses, mengunduh, menyalin, atau menjalankan
+  Kode, termasuk karyawan/kontraktor Pengguna.
+- **Lisensi Evaluasi** — izin terbatas, revokabel, non-eksklusif, tidak dapat
+  dipindahkan, hanya untuk pengujian internal Pengguna sebagaimana bagian 2.
+
+## 2. Tidak ada lisensi default; lisensi evaluasi bersifat terbatas
+
+Tanpa perjanjian tertulis yang ditandatangani Pemilik, **tidak ada lisensi apa pun**
+yang diberikan. Pengguna tidak boleh menggunakan Kode untuk tujuan komersial,
+produksi, klinis, atau layanan kepada pihak ketiga.
+
+Pemilik dapat memberikan Lisensi Evaluasi kepada Pengguna tertentu. Lisensi Evaluasi:
+
+- hanya berlaku untuk lingkungan internal tertutup;
+- tidak boleh dipindahkan, disublicenskan, atau dijual kembali;
+- dapat dicabut kapan saja tanpa pemberitahuan;
+- berakhir otomatis pada `[TANGGAL_BERAKHIR]` atau saat Pengguna melanggar ketentuan ini;
+- tidak mengubah kepemilikan Kode.
+
+## 3. Pembatasan yang tegas
+
+Pengguna dilarang, tanpa izin tertulis dari Pemilik:
+
+1. menggunakan, menyalin, memodifikasi, menerjemahkan, menggabungkan, atau
+   mendistribusikan Kode;
+2. melakukan *reverse engineering*, dekompilasi, disassembling, atau upaya lain
+   untuk memperoleh source code dari bentuk biner/objek;
+3. menjalankan Kode sebagai layanan publik, SaaS, API komersial, atau produk
+   yang bersaing dengan Pemilik;
+4. menghapus, mengaburkan, atau mengubah pemberitahuan hak cipta, merek, lisensi,
+   atau `PATENT.md`;
+5. mempublikasikan, memamerkan, mempresentasikan, atau mengirim Kode ke pihak ketiga,
+   termasuk repositori publik, forum, atau model AI pihak ketiga;
+6. memakai nama Pemilik, merek, logo, atau hasil evaluasi dalam materi promosi;
+7. menggunakan Kode untuk pasien nyata sebelum validasi klinis, review legal, dan
+   persetujuan regulasi tertulis;
+8. menggunakan Kode untuk melanggar hukum, termasuk UU PDP No. 27/2022, UU ITE,
+   atau regulasi kesehatan yang berlaku.
+
+## 4. Kepemilikan dan hak paten
+
+Seluruh hak atas Kode — termasuk hak cipta, rahasia dagang, merek, desain, dan
+**semua hak paten yang mungkin melekat** — tetap menjadi milik Pemilik.
+
+Dokumen ini **tidak memberikan lisensi paten**, baik tersurat, tersirat, melalui
+*estoppel*, maupun karena Pengguna melihat atau menggunakan Kode. Tidak ada hak
+yang diberikan selain yang secara eksplisit disebut dalam bagian 2.
+
+Status paten saat ini dinyatakan jujur di `PATENT.md`: **belum ada permohonan atau
+paten yang diberikan**. Pengguna dilarang mencantumkan label “PATENTED”,
+“PATEN TERDAFTAR”, atau “PATENT PENDING” tanpa bukti tertulis dari otoritas paten.
+
+## 5. Kerahasiaan dan rahasia dagang
+
+Kode, arsitektur agent, ambang triage, template pesan, dan alur antrean merupakan
+informasi rahasia Pemilik. Pengguna wajib:
+
+- menjaga kerahasiaan dan membatasi akses hanya pada personel yang berwenang;
+- menggunakan NDA tertulis sebelum menerima akses produksi;
+- tidak membocorkan informasi kepada pihak ketiga atau publik;
+- mengembalikan atau menghapus salinan setelah Lisensi Evaluasi berakhir.
+
+Pelanggaran bagian ini merupakan pelanggaran rahasia dagang, terlepas dari ada
+atau tidaknya pendaftaran paten.
+
+## 6. Umpan balik
+
+Segala saran, koreksi, permintaan fitur, atau umpan balik yang diberikan Pengguna
+menjadi milik Pemilik tanpa kompensasi. Pengguna menyerahkan semua hak atas umpan
+balik tersebut kepada Pemilik dan tidak akan menuntut royalti atau atribusi.
+
+## 7. Tanpa jaminan dan batas tanggung jawab
+
+Kode disediakan **“sebagaimana adanya” / “as is”**. Pemilik tidak menjamin bahwa
+Kode bebas kesalahan, aman dari segala risiko, sesuai untuk tujuan tertentu,
+atau tidak melanggar hak pihak ketiga.
+
+Sepanjang diizinkan oleh hukum, Pemilik **tidak bertanggung jawab** atas kerugian
+langsung, tidak langsung, insidental, konsekuensial, hilangnya data, hilangnya
+pendapatan, sanksi regulasi, atau kerugian klinis yang timbul dari penggunaan Kode.
+
+Pengguna menanggung dan mengganti rugi Pemilik atas klaim pihak ketiga, denda,
+biaya hukum, dan kerugian yang timbul dari pelanggaran lisensi ini atau penggunaan
+Kode di luar izin tertulis.
+
+## 8. Pengakhiran
+
+Lisensi Evaluasi berakhir otomatis bila Pengguna melanggar ketentuan ini. Pemilik
+dapat mengakhiri akses kapan saja. Setelah pengakhiran, Pengguna wajib segera
+menghentikan penggunaan dan menghapus semua salinan Kode.
+
+## 9. Hukum yang berlaku dan penyelesaian sengketa
+
+Lisensi ini diatur oleh hukum **Republik Indonesia**, tanpa memperhatikan aturan
+konflik hukum. Sengketa diselesaikan secara musyawarah; bila tidak tercapai,
+diselesaikan melalui Pengadilan Negeri `[KOTA]` dengan kekuatan hukum tetap.
+
+## 10. Ketentuan umum
+
+- **Tidak ada pengalihan:** Pengguna tidak boleh mengalihkan lisensi tanpa persetujuan tertulis.
+- **Tidak ada pengecualian diam:** kegagalan Pemilik menegakkan satu ketentuan bukan pengecualian ketentuan lain.
+- **Dapat dipisahkan:** bila satu bagian tidak sah, bagian lainnya tetap berlaku.
+- **Perjanjian lengkap:** dokumen ini merupakan keseluruhan kesepakatan lisensi, menggantikan kesepakatan sebelumnya.
+- **Penerimaan elektronik:** akses atau penggunaan Kode dianggap sebagai penerimaan ketentuan ini.
+
+## 11. Hubungan dengan paten dan dokumen lain
+
+Lisensi ini **tidak** menggantikan:
+
+- pengajuan paten ke DGIP sebagaimana `PATENT.md`;
+- NDA dengan karyawan/kontraktor;
+- kontrak layanan/komersial tertulis;
+- review regulasi kesehatan dan UU PDP.
+
+## 12. Penafian
+
+Dokumen ini bukan jaminan “aman dari apapun”. Perlindungan nyata bergantung pada
+identitas pemilik yang sah, pengajuan HKI, kontrak tertulis, dan kepatuhan operasional.
+
+## 13. Identitas pemilik — WAJIB DIISI
+
+| Field | Nilai |
+|---|---|
+| Nama pemilik / badan hukum | `[NAMA_BADAN_HUKUM]` |
+| Nomor registrasi usaha | `[NOMOR_REGISTRASI]` |
+| Alamat | `[ALAMAT]` |
+| Email lisensi | `[EMAIL_LISENSI]` |
+| Kota pengadilan | `[KOTA]` |
+| Berakhirnya Lisensi Evaluasi | `[TANGGAL_BERAKHIR]` |
+
+---
+
+Versi sebelumnya: proprietary sederhana `v1.0`. Versi ini `v2.0` diperkuat pada
+pembatasan penggunaan, kerahasiaan, umpan balik, ganti rugi, dan yurisdiksi.

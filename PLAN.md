@@ -122,7 +122,8 @@ masih memerlukan keputusan manusia. Worker Redis tidak menyala bila `QUEUE_MODE`
 
 ## 7. Hak kekayaan intelektual
 
-- [x] `LICENSE`: lisensi proprietary, all rights reserved, tanpa lisensi paten tersirat.
+- [x] `LICENSE` v2.0: proprietary diperkuat — tanpa lisensi default, evaluasi revokabel,
+      larangan reverse engineering/publicity, kerahasiaan, ganti rugi, yurisdiksi Indonesia.
 - [x] `PATENT.md`: status jujur (belum diajukan), draft invensi, draf klaim teknis,
       checklist DGIP/PCT, dan alternatif rahasia dagang.
 - [x] README bagian 8 merangkum status IP dan larangan memakai label paten palsu.

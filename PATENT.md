@@ -164,7 +164,7 @@ Repo ini sudah private dan memiliki audit trail, yang mendukung strategi tersebu
 
 | Item | Status |
 |---|---|
-| Lisensi proprietary | ✅ `LICENSE` |
+| Lisensi proprietary v2.0 diperkuat | ✅ `LICENSE` |
 | Draft invensi | ✅ `PATENT.md` |
 | Draf klaim | ✅ bagian 5 |
 | Permohonan DGIP | ❌ Belum dilakukan |
