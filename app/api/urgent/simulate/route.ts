@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { auditApiAccess } from "@/lib/audit";
+import { enqueueJob } from "@/lib/queue";
 import { prisma } from "@/lib/prisma";
 import { executeUrgentFollowUp } from "@/agents/urgentCaller";
 
@@ -17,6 +19,12 @@ export async function POST(request: Request): Promise<NextResponse> {
   const role = session?.user.role ?? "RESEPSIONIS";
 
   if (!hasPermission(role, "triage:write") && !hasPermission(role, "agent:run")) {
+    await auditApiAccess({
+      request,
+      session,
+      action: "URGENT_SIMULATE_DENIED",
+      detail: `Peran ${role} mencoba simulasi panggilan urgent.`
+    });
     return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
   }
 
@@ -43,6 +51,35 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
   if (!patientId) {
     return NextResponse.json({ error: "Tidak ada pasien MERAH untuk disimulasikan." }, { status: 404 });
+  }
+
+  const queued = await enqueueJob(
+    "urgent.followup",
+    {
+      patientId,
+      visitId: parsed.data.visitId,
+      triageLogId: parsed.data.triageLogId,
+      actorId: session?.user.id,
+      simulate: true
+    },
+    {
+      jobId: parsed.data.triageLogId ? `urgent-sim-${parsed.data.triageLogId}` : undefined
+    }
+  );
+
+  await auditApiAccess({
+    request,
+    session,
+    action: queued.mode === "redis" ? "URGENT_SIMULATE_QUEUED" : "URGENT_SIMULATE",
+    targetPatientId: patientId,
+    detail: queued.detail
+  });
+
+  if (queued.mode === "redis") {
+    return NextResponse.json(
+      { patientId, queued: true, jobId: queued.jobId, stages: [], totalLogs: 0, detail: queued.detail },
+      { status: 202 }
+    );
   }
 
   const stages = await executeUrgentFollowUp({

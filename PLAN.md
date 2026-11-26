@@ -1,6 +1,6 @@
 # PLAN — MEDI-BOT AGENCY v3
 
-> Status: **Selesai — Langkah 0 sampai 5 terverifikasi (2026-11-26).**
+> Status: **Selesai — Langkah 0 sampai 5 + hardening produksi terverifikasi (2026-11-26).**
 > Dokumen ini adalah sumber kebenaran untuk urutan kerja. Centang hanya setelah kode benar-benar berjalan dan teruji.
 
 ---
@@ -43,7 +43,7 @@ Pendukung: `lib/triageRules.ts`, `lib/whatsapp.ts`, `lib/phone.ts`, `lib/crypto.
 - [x] Next.js 14 App Router + TypeScript + Tailwind + pola shadcn/ui (`components/ui/button.tsx`).
 - [x] `prisma/schema.prisma` (SQLite default) + skrip `prisma:generate:pg` untuk PostgreSQL via `DATABASE_PROVIDER`.
 - [x] 18 model: patients, doctors, visits, medical_records, lab_results, prescriptions, triage_logs, urgent_calls, agent_logs, audit_logs, reports, notifications, appointments + User, WaitingList, MedicineStock, Claim.
-- [x] NextAuth Credentials + JWT, role di session, `middleware.ts` proteksi route.
+- [x] NextAuth Credentials + JWT, role di session, `proxy.ts` proteksi route.
 - [x] Enkripsi AES-256-GCM + HMAC hash NIK + masking `35****7890`.
 - [x] Seed 20 pasien Indonesia: 3 MERAH (190/120, gula 320, saturasi 88%), 5 KUNING, 12 HIJAU. NIK diawali `35`.
 - [x] `.env.example` tanpa kunci asli.
@@ -101,5 +101,19 @@ menggunakan **Next.js 16.4.6 + React 19** agar `npm audit` = 0 vulnerability.
 1. **Bukan alat medis tersertifikasi.** Ambang triage di sini berasal dari spesifikasi Anda, bukan dari pedoman klinis resmi Kemenkes. Validasi oleh dokter/perawat wajib sebelum dipakai.
 2. **Panggilan nyata butuh approval.** `ALLOW_REAL_OUTBOUND=false` dan `REQUIRE_HUMAN_APPROVAL=true` harus tetap aktif sampai ada SOP tertulis.
 3. **UU PDP No. 27/2022.** Data pasien adalah data pribadi sensitif. Perlu: consent,(retensi/audit 1 tahun), enkripsi kunci terkelola (KMS/HSM), dan DPA dengan provider WhatsApp/telepon.
-4. **PostgreSQL produksi.** Mode SQLite hanya untuk testing Windows. Untuk produksi jalankan `npm run prisma:generate:pg` dan gunakan `DATABASE_URL` PostgreSQL.
-5. **Cron dalam proses.** Orchestrator versi awal berjalan di dalam Next.js; untuk multi-instance gunakan BullMQ + Redis sesuai spesifikasi (Langkah 4).
+4. **PostgreSQL produksi.** Mode SQLite hanya untuk testing Windows. Untuk produksi jalankan `npm run db:setup:pg` setelah `DATABASE_URL` PostgreSQL diset.
+5. **Cron dalam proses.** Scheduler node-cron tetap tersedia untuk single-instance; untuk multi-instance pakai `QUEUE_MODE=redis` + `npm run queue:worker`.
+
+---
+
+## 6. Hardening produksi (tambahan)
+
+- [x] `lib/queue.ts` + `scripts/queue-worker.ts`: BullMQ/Redis, retry 3x, backoff eksponensial, dedup `jobId`, shutdown rapi. Default `QUEUE_MODE=sync` tanpa Redis.
+- [x] API `orchestrator.run` dan `urgent.followup`: mode redis mengembalikan HTTP 202 + `jobId`, mode sync tetap menjalankan langsung agar DoD tidak berubah.
+- [x] `docker-compose.yml`: PostgreSQL 16 + Redis 7 dengan healthcheck dan volume persisten.
+- [x] `lib/audit.ts`: audit nyata di endpoint pasien, triage, simulasi urgent, laporan, dan agent run (aktor + IP + target).
+- [x] `.github/workflows/ci.yml`: verifikasi Windows (npm ci, db setup, typecheck, test, build, audit) + verifikasi PostgreSQL/Redis/E2E di Ubuntu.
+- [x] `tests/hardening.test.ts`: RBAC, outbound guard, template tanpa diagnosis, enkripsi/masking, IP audit, dan opsi antrean.
+
+Batasan yang tetap berlaku: validasi klinis, review UU PDP, DPA provider, dan pengiriman nyata
+masih memerlukan keputusan manusia. Worker Redis tidak menyala bila `QUEUE_MODE` tidak `redis`.

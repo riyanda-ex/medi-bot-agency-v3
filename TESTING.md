@@ -6,8 +6,8 @@
 npm test
 ```
 
-Harapan: **10/10 tes triage lulus** (`tests/triage.test.ts`) dan 3 tes perbaikan Bug Hunter
-(`fixes/fixes.test.ts`), total 13/13.
+Harapan: **10/10 tes triage lulus** (`tests/triage.test.ts`), 3 tes perbaikan Bug Hunter
+(`fixes/fixes.test.ts`), dan 10 tes hardening (`tests/hardening.test.ts`), total **23/23**.
 
 Cakupan tes:
 1. TD 190/120 → MERAH
@@ -26,7 +26,12 @@ Cek tambahan:
 ```powershell
 npm run typecheck
 npm run build
+npm audit --audit-level=high
 ```
+
+Tes hardening mencakup: RBAC dokter vs resepsionis, provider mock, blokir outbound nyata,
+template WhatsApp tanpa diagnosis, enkripsi + masking NIK/HP, IP audit dari `x-forwarded-for`,
+serta opsi retry antrean BullMQ.
 
 ## 2. Manual — fondasi
 
@@ -71,10 +76,24 @@ Smoke test agent tanpa HTTP:
 npm run verify:agents
 ```
 
-## 6. Yang belum diuji untuk produksi
+## 6. Produksi (PostgreSQL + Redis)
+
+```powershell
+docker compose up -d
+# Set DATABASE_URL PostgreSQL, DATABASE_PROVIDER=postgresql, QUEUE_MODE=redis,
+# REDIS_URL=redis://localhost:6379 di .env
+npm run db:setup:pg
+npm run queue:worker
+```
+
+Verifikasi: endpoint `/api/orchestrator/run` mengembalikan `202` + `jobId`, dan log worker
+menampilkan `orchestrator.run` selesai. CI GitHub Actions menjalankan skenario yang sama
+dengan service PostgreSQL/Redis, termasuk E2E HTTP.
+
+## 7. Yang belum diuji untuk produksi
 
 - Validasi klinis atas ambang triage oleh dokter/perawat.
 - Review legal UU PDP No. 27/2022 dan DPA provider WhatsApp/telepon/SMTP.
-- Deployment PostgreSQL + BullMQ/Redis multi-instance (Scheduler saat ini in-process).
 - Pengiriman nyata WhatsApp/telepon/email (sengaja dinonaktifkan secara default).
+- Beban multi-instance dan failover Redis di lingkungan produksi sesungguhnya.
 - Jangan gunakan untuk pasien nyata sampai item di atas selesai.

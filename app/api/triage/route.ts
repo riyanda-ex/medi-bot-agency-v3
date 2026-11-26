@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { runUrgentTriage } from "@/agents/urgentCaller";
 import { writeAgentLog } from "@/lib/agentLog";
@@ -32,6 +33,12 @@ export async function POST(request: Request): Promise<NextResponse> {
   const role = session?.user.role ?? "RESEPSIONIS";
 
   if (!hasPermission(role, "triage:read")) {
+    await auditApiAccess({
+      request,
+      session,
+      action: "TRIAGE_DENIED",
+      detail: `Peran ${role} mencoba melakukan triage.`
+    });
     return NextResponse.json({ error: "Akses ditolak: peran Anda tidak boleh melakukan triage." }, { status: 403 });
   }
 
@@ -81,6 +88,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     message: `Triage ${result.level} selesai dalam ${Date.now() - startedAt} ms`,
     runId: result.triageLogId,
     durationMs: Date.now() - startedAt
+  });
+
+  await auditApiAccess({
+    request,
+    session,
+    action: "TRIAGE_SUBMIT",
+    targetPatientId: patient.id,
+    detail: `Level ${result.level}, triageLog ${result.triageLogId}, latensi ${Date.now() - startedAt} ms.`
   });
 
   return NextResponse.json({

@@ -15,7 +15,8 @@ pengiriman nyata memerlukan flag **`ALLOW_REAL_OUTBOUND=true`** plus approval ma
 - Windows PowerShell (diuji), Node.js 22+, npm 11+
 - Next.js 16.4.6 + React 19 + TypeScript + Tailwind + Prisma
 - Tidak perlu Docker untuk mode testing (SQLite)
-- PostgreSQL + Redis hanya diperlukan untuk deployment produksi
+- PostgreSQL + Redis opsional untuk produksi: `docker compose up -d`
+- Worker BullMQ dijalankan terpisah dari server Next.js
 
 ## 2. Quickstart (Windows PowerShell)
 
@@ -51,19 +52,25 @@ Ganti kata sandi seed sebelum penggunaan nyata.
 | `npm run db:seed` | Isi 20 pasien dummy |
 | `npm run db:studio` | Prisma Studio |
 | `npm run prisma:generate:pg` | Hasilkan schema + client PostgreSQL |
+| `npm run db:setup:pg` | Push + seed PostgreSQL (set `DATABASE_URL` dulu) |
+| `npm run queue:worker` | Jalankan worker BullMQ (butuh `QUEUE_MODE=redis`) |
 | `npm run verify:agents` | Jalankan ketujuh agent sekali untuk smoke test |
 | `npm run e2e` | Cek HTTP end-to-end (server harus berjalan di :3000) |
 
 ## 4. Struktur
 
 ```
-app/                 UI Next.js (dashboard, triage, reports, audit, login)
+app/                 UI + API Next.js (dashboard, triage, reports, audit, login)
 agents/              Tujuh agent sesuai spesifikasi
-lib/                 triageRules, whatsapp, phone, crypto, auth, rbac, prisma, agentLog
+lib/                 triageRules, whatsapp, phone, crypto, auth, rbac, prisma,
+                     agentLog, audit, queue (BullMQ)
 prisma/              schema.prisma + seed.ts
-tests/               triage.test.ts
+tests/               triage.test.ts + hardening.test.ts
+fixes/               Hasil Bug Hunter + tesnya
 components/ui/       Komponen shadcn/ui
-scripts/             Generator schema PostgreSQL
+scripts/             Generator schema PostgreSQL, E2E, worker antrean
+.github/workflows/   CI Windows + PostgreSQL/Redis/E2E
+docker-compose.yml   PostgreSQL + Redis untuk produksi
 PLAN.md              Rencana kerja & status
 TESTING.md           Protokol pengujian
 ```
@@ -76,13 +83,35 @@ TESTING.md           Protokol pengujian
 | `PHONE_PROVIDER` | `mock` (default), `twilio` |
 | `ALLOW_REAL_OUTBOUND` | `false` (default) / `true` |
 | `REQUIRE_HUMAN_APPROVAL` | `true` (default) |
+| `QUEUE_MODE` | `sync` (default) / `redis` |
+| `REDIS_URL` | `redis://localhost:6379` (dipakai saat `QUEUE_MODE=redis`) |
 
 Tidak ada API key di kode. Semua kredensial dibaca dari `.env`, dan `.env` tidak masuk Git.
+
+### Produksi (opsional)
+
+```powershell
+docker compose up -d
+# Set DATABASE_URL PostgreSQL, DATABASE_PROVIDER=postgresql,
+# QUEUE_MODE=redis dan REDIS_URL di .env
+npm run db:setup:pg
+npm run build
+npm run queue:worker
+npm run start
+```
+
+Mode `sync` menjalankan agent langsung di request API. Mode `redis` mengembalikan HTTP 202
+bersama `jobId`, lalu worker yang menjalankan `orchestrator.run` / `urgent.followup`
+dengan retry 3x (backoff eksponensial). Keduanya tetap memakai guard outbound yang sama.
 
 ## 6. Status implementasi
 
 Lihat `PLAN.md`. Langkah 0–5 selesai dan terverifikasi: `npm test` 13/13 (10 triage),
 `npm run build` bersih, `npm audit` 0 vulnerability, dan `npm run e2e` lolos semua check.
+
+Hardening produksi juga sudah terpasang: antrean BullMQ/Redis dengan worker terpisah,
+`docker-compose.yml` PostgreSQL + Redis, CI GitHub Actions (Windows + layanan produksi),
+audit akses nyata pada endpoint API, dan tes keamanan/antrean tambahan.
 
 Keputusan keamanan: Next.js 14 diganti ke 16.4.6 karena advisory kritis pada semua
 versi lama. Perubahan ini disetujui dan terdokumentasi di `PLAN.md`.

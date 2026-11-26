@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  NEXTAUTH_URL: http://localhost:3000
+  NEXTAUTH_SECRET: ci-only-secret-not-for-production-1234567890
+  FIELD_ENCRYPTION_KEY: ci-only-field-key-not-for-production-1234567890
+  SYNC_MODE: "true"
+  ALLOW_REAL_OUTBOUND: "false"
+  REQUIRE_HUMAN_APPROVAL: "true"
+  WHATSAPP_PROVIDER: mock
+  PHONE_PROVIDER: mock
+  QUEUE_MODE: sync
+
+jobs:
+  verify-windows:
+    name: Verifikasi Windows PowerShell
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:setup
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=high
+
+  verify-services:
+    name: Verifikasi PostgreSQL + Redis + E2E
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: medibot
+          POSTGRES_USER: medibot
+          POSTGRES_PASSWORD: medibot_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medibot -d medibot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://medibot:medibot_ci_password@localhost:5432/medibot?schema=public
+      DATABASE_PROVIDER: postgresql
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate:pg
+      - run: npx prisma db push --schema prisma/schema.postgres.prisma
+      - run: npm run db:seed
+      - run: npm run build
+      - name: Jalankan server produksi
+        run: |
+          nohup npm run start -- -p 3000 > server.log 2>&1 &
+          echo $! > server.pid
+      - name: Tunggu server siap
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/login > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat server.log
+          exit 1
+      - run: npm run e2e
+      - name: Hentikan server
+        if: always()
+        run: kill $(cat server.pid) || true

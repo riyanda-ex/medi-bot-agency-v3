@@ -11,12 +11,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:agents": "tsx scripts/verify-agents.ts",
+    "queue:worker": "tsx scripts/queue-worker.ts",
     "e2e": "node scripts/e2e-check.mjs",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:generate:pg": "node scripts/sync-postgres-schema.mjs && prisma generate --schema prisma/schema.postgres.prisma",
     "db:push": "prisma db push --schema prisma/schema.prisma",
     "db:seed": "tsx prisma/seed.ts",
     "db:setup": "npm run prisma:generate && npm run db:push && npm run db:seed",
+    "db:push:pg": "prisma db push --schema prisma/schema.postgres.prisma",
+    "db:setup:pg": "npm run prisma:generate:pg && npm run db:push:pg && npm run db:seed",
     "db:studio": "prisma studio --schema prisma/schema.prisma",
     "postinstall": "prisma generate --schema prisma/schema.prisma"
   },
@@ -24,10 +27,12 @@
     "@prisma/client": "5.22.0",
     "@radix-ui/react-slot": "1.1.1",
     "bcryptjs": "2.4.3",
+    "bullmq": "6.7.10",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "date-fns": "4.1.0",
     "exceljs": "4.4.0",
+    "ioredis": "6.1.0",
     "lucide-react": "0.468.0",
     "next": "16.4.6",
     "next-auth": "4.24.15",
@@ -58,6 +63,7 @@
     "tailwindcss": "3.4.17",
     "tsx": "4.23.15",
     "typescript": "5.7.3",
+    "vite": "8.4.0",
     "vitest": "5.1.2"
   }
 }

@@ -18,6 +18,7 @@ import { evaluateTriage, type TriageInput } from "@/lib/triageRules";
 import { sendWhatsApp, isOutboundAllowed, type OutboundResult } from "@/lib/whatsapp";
 import { callPatient } from "@/lib/phone";
 import { writeAgentLog } from "@/lib/agentLog";
+import { enqueueJob } from "@/lib/queue";
 
 export const WHATSAPP_TEMPLATE =
   "Halo Bapak/Ibu [NAMA], ini dari [NAMA KLINIK]. Hasil pemeriksaan Anda perlu ditindaklanjuti SEGERA hari ini. Mohon datang ke klinik atau hubungi nomor darurat [NO DARURAT]. Mohon jangan tunda. - Pesan otomatis MEDI-BOT";
@@ -155,14 +156,36 @@ export async function runUrgentTriage(options: RunOptions): Promise<TriageRunRes
   ];
 
   if (evaluation.level === "MERAH") {
-    const followUp = await executeUrgentFollowUp({
-      patientId: options.patientId,
-      visitId: visit.id,
-      triageLogId: triageLog.id,
-      actorId: options.actorId,
-      approvedBy: options.approvedBy
-    });
-    stages.push(...followUp);
+    const queued = await enqueueJob(
+      "urgent.followup",
+      {
+        patientId: options.patientId,
+        visitId: visit.id,
+        triageLogId: triageLog.id,
+        actorId: options.actorId,
+        approvedBy: options.approvedBy
+      },
+      { jobId: `urgent-${triageLog.id}` }
+    );
+
+    if (queued.mode === "redis") {
+      stages.push({
+        label: "Tindak lanjut MERAH masuk antrean",
+        offsetSeconds: 0,
+        channel: "QUEUE",
+        status: "QUEUED",
+        detail: queued.detail
+      });
+    } else {
+      const followUp = await executeUrgentFollowUp({
+        patientId: options.patientId,
+        visitId: visit.id,
+        triageLogId: triageLog.id,
+        actorId: options.actorId,
+        approvedBy: options.approvedBy
+      });
+      stages.push(...followUp);
+    }
   }
 
   return {
