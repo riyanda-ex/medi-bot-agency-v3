@@ -122,3 +122,13 @@ Data pasien (NIK, nomor HP, diagnosa) dienkripsi AES-256-GCM. NIK juga disimpan 
 untuk deteksi duplikat tanpa menyimpan plaintext. Audit log mencatat aktor, waktu, target, dan IP.
 Sebelum produksi: tinjau consent, retensi 1 tahun, enkripsi kunci terkelola, dan DPA provider
 sesuai UU PDP No. 27/2022.
+
+## 8. Hak kekayaan intelektual
+
+- `LICENSE` — lisensi **proprietary**, semua hak dilindungi, tanpa lisensi paten tersirat.
+- `PATENT.md` — status paten, draft invensi, draf klaim, dan checklist pengajuan DGIP.
+
+**Paten belum diajukan/diberikan.** Jangan memakai label “PATENT PENDING” atau
+“PATEN TERDAFTAR” sebelum ada bukti resmi dari otoritas paten. Isi identitas pemilik
+di `LICENSE` dan konsultasikan draft klaim dengan konsultan paten sebelum pengajuan.
+Dokumen ini bukan nasihat hukum dan bukan jaminan perlindungan dari segala risiko.

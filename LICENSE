@@ -1,0 +1,62 @@
+# LISENSI PROPRIETARI — MEDI-BOT AGENCY v3
+
+Copyright (c) 2026 Pemilik Proyek MEDI-BOT AGENCY v3.
+**Seluruh hak dilindungi — All rights reserved.**
+
+> Dokumen ini adalah lisensi proprietary/default. Sebelum dipakai secara komersial,
+> ganti "Pemilik Proyek MEDI-BOT AGENCY v3" dengan nama/identitas badan hukum yang sah
+> dan isi kontak pada bagian 6. Ini bukan nasihat hukum.
+
+## 1. Tidak ada lisensi yang diberikan
+
+Tanpa perjanjian tertulis yang ditandatangani oleh pemilik hak, tidak ada pihak mana pun
+yang diberi hak untuk:
+
+- menggunakan, menyalin, memodifikasi, atau menggabungkan kode ini;
+- mendistribusikan, menjual, menyewakan, atau memamerkan kode ini;
+- membuat karya turunan, paket, layanan, atau produk berbasis kode ini;
+- menghapus atau mengubah pemberitahuan hak cipta, merek, atau lisensi ini.
+
+Semua hak yang tidak secara eksplisit diberikan **tetap berada pada pemilik**.
+
+## 2. Tidak ada lisensi paten
+
+Dokumen ini **tidak memberikan lisensi paten**, baik tersurat maupun tersirat.
+Dokumen ini juga **tidak menyatakan** bahwa paten telah diajukan, sedang diproses,
+atau telah diberikan. Status paten yang sah hanya dapat dibuktikan dengan dokumen
+resmi dari otoritas paten yang berwenang.
+
+Lihat `PATENT.md` untuk status dan berkas persiapan pengajuan.
+
+## 3. Batasan penggunaan
+
+Kode ini disediakan untuk evaluasi internal dan pengembangan oleh pemilik proyek.
+Sistem ini adalah **pendukung keputusan**, bukan alat medis tersertifikasi, dan tidak
+boleh dipakai untuk pasien nyata sebelum validasi klinis, review hukum, dan persetujuan
+regulasi selesai.
+
+## 4. Tanpa jaminan
+
+Perangkat lunak disediakan **"sebagaimana adanya" / "as is"**, tanpa jaminan
+kepemilikan, keamanan, kesesuaian untuk tujuan tertentu, atau bebas pelanggaran hak
+pihak ketiga. Pemilik tidak menjamin bahwa penggunaan sistem ini akan melindungi
+dari segala risiko hukum, klinis, atau komersial.
+
+## 5. Pelanggaran
+
+Penggunaan tanpa izin dapat merupakan pelanggaran hak cipta, merek, rahasia dagang,
+dan/atau hukum terkait lainnya. Pemilik berhak menempuh upaya hukum yang tersedia.
+
+## 6. Kontak lisensi
+
+Isi sebelum penggunaan nyata:
+
+- Pemilik / badan hukum: `[NAMA_BADAN_HUKUM]`
+- Alamat: `[ALAMAT]`
+- Email lisensi: `[EMAIL_LISENSI]`
+
+---
+
+Versi lisensi ini dapat diganti, misalnya ke Apache-2.0 bila ingin mencantumkan
+*patent grant* eksplisit untuk kontributor/open source. Perubahan harus dicatat
+dalam commit terpisah dan disetujui pemilik.

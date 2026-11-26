@@ -117,3 +117,16 @@ menggunakan **Next.js 16.4.6 + React 19** agar `npm audit` = 0 vulnerability.
 
 Batasan yang tetap berlaku: validasi klinis, review UU PDP, DPA provider, dan pengiriman nyata
 masih memerlukan keputusan manusia. Worker Redis tidak menyala bila `QUEUE_MODE` tidak `redis`.
+
+---
+
+## 7. Hak kekayaan intelektual
+
+- [x] `LICENSE`: lisensi proprietary, all rights reserved, tanpa lisensi paten tersirat.
+- [x] `PATENT.md`: status jujur (belum diajukan), draft invensi, draf klaim teknis,
+      checklist DGIP/PCT, dan alternatif rahasia dagang.
+- [x] README bagian 8 merangkum status IP dan larangan memakai label paten palsu.
+
+Yang **tidak** bisa diselesaikan oleh kode: pengajuan paten, pemeriksaan novelty,
+penandatanganan NDA/kontrak, dan penegakan hukum. Semua itu memerlukan pemilik hak
+dan konsultan paten.
