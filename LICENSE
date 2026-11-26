@@ -1,147 +1,136 @@
-# LISENSI KOMERSIAL PROPRIETARY — MEDI-BOT AGENCY v3
+Copyright (c) 2026 Riyanda (GitHub: riyanda-ex)
+All Rights Reserved.
 
-Versi 3.0 — 2026-11-26
+MEDI-BOT AGENCY v3 PROPRIETARY LICENSE
+Version 3.1 — Effective 2026-11-26
 
-Pemilik: **Riyanda, pemegang akun GitHub `riyanda-ex`** ("Pemilik").
+IMPORTANT NOTICE
+This license governs the MEDI-BOT AGENCY v3 software and all associated materials in
+this repository (the "Software"). This document is a legal license, not legal advice,
+not a patent grant, and not a guarantee of regulatory or clinical safety.
 
-Jika hak atas proyek ini kelak dialihkan atau dipegang oleh badan hukum, ganti baris
-Pemilik di atas dengan nama badan hukum tersebut. Seluruh ketentuan lain tetap berlaku
-tanpa perlu mengubah bagian lain dari lisensi ini.
+1. DEFINITIONS
+"Owner" means Riyanda, the holder of GitHub account "riyanda-ex", including any
+successor or assignee that receives rights in writing.
+"Software" means all source code, object code, binaries, scripts, configuration,
+schemas, prompts, agent logic, templates, documentation, designs, assets, and
+derivative works contained in or distributed with this repository.
+"Authorized Evaluation License" means a separate written permission from the Owner
+that explicitly grants a limited right to evaluate the Software.
 
-Dokumen ini bukan nasihat hukum, bukan jaminan “aman dari apapun”, dan tidak
-menciptakan paten. Lihat `PATENT.md` untuk status paten dan berkas pengajuannya.
+2. OWNERSHIP
+The Software is proprietary and confidential to the Owner. All rights, title, and
+interest in and to the Software, including copyrights, trade secrets, moral rights to
+the extent waivable, and other intellectual property rights, are and remain the
+exclusive property of the Owner. No rights are granted by implication, estoppel, or
+otherwise except as expressly stated in a written agreement signed by the Owner.
 
----
+3. NO DEFAULT LICENSE
+Except for the Owner, no person or entity is granted any license or right to use,
+copy, modify, merge, publish, distribute, sublicense, sell, lease, host, disclose, or
+create derivative works of the Software. Any access to this repository does not grant
+permission to use the Software beyond what is required to view it on GitHub under
+GitHub's applicable terms.
 
-## 1. Status hak
+4. AUTHORIZED EVALUATION LICENSE (OPTIONAL, WRITTEN ONLY)
+The Owner may, at the Owner's sole discretion, grant a written Authorized Evaluation
+License. Unless the written authorization states otherwise, such license is:
+  a. non-exclusive, non-transferable, non-sublicensable, and revocable;
+  b. limited to internal evaluation by the named recipient;
+  c. prohibited from production, clinical, commercial, public, or patient-facing use;
+  d. terminated immediately upon breach or upon written revocation by the Owner.
 
-Seluruh hak atas Kode — termasuk hak cipta, rahasia dagang, merek, desain, arsitektur
-sistem, aturan triage, template pesan, skema database, dan dokumentasi — sepenuhnya
-milik Pemilik.
+5. PROHIBITED ACTS
+Without prior written permission from the Owner, you must not:
+  a. use, run, copy, modify, adapt, translate, or create derivative works of the Software;
+  b. distribute, publish, sell, license, sublicense, rent, lease, or provide the Software
+     as a service, API, hosted product, or competing product;
+  c. reverse engineer, decompile, disassemble, or attempt to derive source logic, except
+     only to the limited extent such restriction is prohibited by applicable law;
+  d. remove or alter copyright, license, confidentiality, or attribution notices;
+  e. upload the Software or substantial parts of it to public repositories, forums, data
+     brokers, or AI training/services in a way that grants third-party reuse rights;
+  f. use the Owner's name, marks, or evaluation results for endorsement or publicity;
+  g. use the Software with real patient data or clinical workflows before obtaining all
+     required clinical validation, legal review, security controls, and regulatory approvals;
+  h. use the Software in violation of applicable law, including Indonesia's Personal Data
+     Protection Law (UU PDP No. 27/2022), ITE Law, health regulations, or export/sanctions laws.
 
-**Kode** berarti seluruh source code, kode objek/biner, konfigurasi, model agent,
-script, skema Prisma, template notifikasi, dan karya turunannya dalam repositori ini.
+6. PATENTS
+No patent license is granted, expressly, impliedly, by estoppel, or otherwise. All patent
+rights that may exist or arise from the Software remain reserved by the Owner. As stated in
+PATENT.md, there is currently no filed or granted patent unless official patent-office
+records prove otherwise. You must not claim "patented", "patent pending", or similar status
+without official proof.
 
-## 2. Hak Pemilik dan pihak lain
+7. TRADE SECRETS AND CONFIDENTIALITY
+The Software contains confidential information and trade secrets, including architecture,
+workflows, triage logic, escalation behavior, security controls, and implementation details.
+Any party with authorized access must protect the Software using at least reasonable care,
+restrict access to need-to-know personnel, and return or destroy copies upon request or
+termination of authorization.
 
-Pemilik memiliki hak penuh untuk menggunakan, memodifikasi, mendistribusikan,
-melisensikan, menjual, atau tidak menggunakan Kode ini.
+8. CONTRIBUTIONS AND FEEDBACK
+Unless the Owner agrees otherwise in writing, any feedback, suggestions, ideas, or
+contributions provided to the Owner may be used, modified, and incorporated by the Owner
+without compensation, attribution, or obligation. The provider represents that they have
+the right to submit such feedback.
 
-Terhadap **pihak selain Pemilik**, tidak ada lisensi apa pun yang diberikan secara
-default. Tidak ada hak penggunaan, penyalinan, modifikasi, distribusi, atau pembuatan
-karya turunan tanpa perjanjian tertulis yang ditandatangani Pemilik.
+9. THIRD-PARTY COMPONENTS
+The Software may include or depend on third-party open-source or commercial components.
+Those components remain subject to their own licenses. This license does not limit rights
+granted by applicable third-party licenses for those components.
 
-Pemilik dapat, atas kebijakannya sendiri, memberikan **Lisensi Evaluasi** tertulis
-yang:
+10. MEDICAL AND COMPLIANCE DISCLAIMER
+THE SOFTWARE IS A DECISION-SUPPORT PROTOTYPE/DEVELOPMENT SYSTEM, NOT A CERTIFIED MEDICAL
+DEVICE, NOT A SUBSTITUTE FOR PROFESSIONAL MEDICAL JUDGMENT, AND NOT VALIDATED FOR REAL
+PATIENT CARE. The Owner makes no representation that the Software is fit for clinical use,
+regulatory compliance, or emergency response.
 
-- bersifat non-eksklusif, terbatas, dan dapat dicabut kapan saja;
-- hanya untuk pengujian internal penerima;
-- tidak dapat dipindahkan atau disublicenskan;
-- tidak boleh dipakai untuk produksi, layanan publik, atau pasien nyata;
-- tidak mengubah kepemilikan Kode.
+11. WARRANTY DISCLAIMER
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE",
+WITH ALL FAULTS AND WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS, IMPLIED, STATUTORY, OR
+OTHERWISE, INCLUDING IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
+TITLE, NON-INFRINGEMENT, ACCURACY, AVAILABILITY, SECURITY, OR ERROR-FREE OPERATION.
 
-## 3. Larangan bagi pihak lain
+12. LIMITATION OF LIABILITY
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE OWNER SHALL NOT BE LIABLE FOR ANY INDIRECT,
+INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, PUNITIVE, OR SIMILAR DAMAGES, OR FOR ANY
+LOSS OF DATA, PROFITS, REVENUE, GOODWILL, BUSINESS INTERRUPTION, REGULATORY PENALTIES, OR
+CLINICAL HARM, ARISING OUT OF OR RELATED TO THE SOFTWARE OR THIS LICENSE, EVEN IF ADVISED
+OF THE POSSIBILITY OF SUCH DAMAGES. TO THE EXTENT ANY LIABILITY CANNOT BE EXCLUDED, THE
+OWNER'S TOTAL AGGREGATE LIABILITY SHALL NOT EXCEED THE AMOUNT PAID BY YOU TO THE OWNER FOR
+A WRITTEN LICENSE TO THE SOFTWARE IN THE TWELVE (12) MONTHS BEFORE THE CLAIM, OR USD 0 IF
+NO AMOUNT WAS PAID.
 
-Tanpa izin tertulis Pemilik, pihak lain dilarang:
+13. INDEMNITY
+You agree to defend, indemnify, and hold harmless the Owner from and against any claims,
+damages, liabilities, losses, costs, and expenses (including reasonable legal fees) arising
+from your unauthorized use, breach of this license, or violation of law or third-party rights.
 
-1. menggunakan, menyalin, memodifikasi, menggabungkan, atau mendistribusikan Kode;
-2. melakukan *reverse engineering*, dekompilasi, atau disassembling;
-3. menjalankan Kode sebagai SaaS, API komersial, atau produk yang bersaing;
-4. menghapus atau mengubah pemberitahuan lisensi, hak cipta, atau `PATENT.md`;
-5. mempublikasikan Kode ke repositori publik, forum, atau layanan AI pihak ketiga;
-6. memakai nama, merek, atau hasil evaluasi untuk promosi;
-7. menggunakan Kode untuk pasien nyata sebelum validasi klinis, review legal, dan
-   persetujuan regulasi;
-8. menggunakan Kode untuk melanggar hukum, termasuk UU PDP No. 27/2022 dan UU ITE.
+14. TERMINATION
+Any Authorized Evaluation License terminates automatically upon breach. Upon termination or
+revocation, you must immediately stop all use of the Software and destroy or permanently
+delete all copies, except where retention is required by law and kept confidential.
 
-## 4. Tidak ada lisensi paten
+15. GOVERNING LAW AND VENUE
+This license is governed by the laws of the Republic of Indonesia, without regard to
+conflict-of-law rules. Disputes shall first be addressed through good-faith discussion. If
+unresolved, disputes shall be submitted to the competent courts in the Owner's domicile in
+Indonesia, unless mandatory law requires otherwise.
 
-Lisensi ini **tidak memberikan lisensi paten**, baik tersurat, tersirat, maupun
-melalui *estoppel*. Pemilik tetap memegang semua hak atas paten yang mungkin timbul
-dari Kode ini.
+16. GENERAL
+If any provision is held unenforceable, the remaining provisions remain in effect. Failure to
+enforce a provision is not a waiver. The Owner may assign rights under this license; you may
+not assign without prior written consent from the Owner. This license is the entire agreement
+regarding the proprietary licensing of the Software and supersedes prior proprietary license
+texts for this repository.
 
-Status saat ini, sebagaimana tercantum di `PATENT.md`: **belum ada permohonan paten
-yang diajukan dan belum ada paten yang diberikan**. Pihak lain dilarang mencantumkan
-label “PATENTED”, “PATEN TERDAFTAR”, atau “PATENT PENDING” tanpa bukti resmi dari
-otoritas paten.
+17. CONTACT
+Licensing inquiries: https://github.com/riyanda-ex/medi-bot-agency-v3/issues or GitHub account riyanda-ex.
 
-## 5. Rahasia dagang
-
-Arsitektur multi-agent, ambang triage, urutan eskalasi, mekanisme deduplikasi job,
-template pesan tanpa diagnosa, dan detail enkripsi merupakan informasi rahasia
-Pemilik. Pihak yang diberi akses wajib menjaga kerahasiaan, membatasi akses hanya
-kepada personel berwenang, dan menandatangani NDA sebelum akses produksi.
-
-Pelanggaran ketentuan ini merupakan pelanggaran rahasia dagang, terlepas dari ada
-atau tidaknya paten yang didaftarkan.
-
-## 6. Umpan balik
-
-Segala saran, koreksi, atau umpan balik yang diberikan pihak lain menjadi milik
-Pemilik tanpa kompensasi. Pemberi umpan balik menyerahkan haknya dan tidak menuntut
-royalti atau atribusi.
-
-## 7. Tanpa jaminan dan batas tanggung jawab
-
-Kode disediakan **“sebagaimana adanya” / “as is”**. Pemilik tidak menjamin bahwa
-Kode bebas kesalahan, sesuai untuk tujuan tertentu, atau tidak melanggar hak pihak
-ketiga. Sistem ini adalah pendukung keputusan, **bukan alat medis tersertifikasi**.
-
-Sepanjang diizinkan hukum, Pemilik tidak bertanggung jawab atas kerugian langsung,
-tidak langsung, insidental, konsekuensial, hilangnya data, hilangnya pendapatan,
-sanksi regulasi, maupun kerugian klinis yang timbul dari penggunaan Kode.
-
-## 8. Ganti rugi
-
-Pihak yang menggunakan Kode tanpa izin atau di luar ketentuan ini wajib menanggung
-dan mengganti rugi Pemilik atas klaim pihak ketiga, denda, biaya hukum, dan kerugian
-lain yang timbul dari pelanggaran tersebut.
-
-## 9. Pengakhiran
-
-Lisensi Evaluasi berakhir otomatis saat penerimanya melanggar ketentuan ini atau saat
-Pemilik mencabutnya. Setelah berakhir, penerima wajib segera menghentikan penggunaan
-dan menghapus seluruh salinan Kode.
-
-## 10. Hukum dan sengketa
-
-Lisensi ini diatur oleh hukum Republik Indonesia. Sengketa diselesaikan terlebih
-dahulu secara musyawarah; bila tidak tercapai, diselesaikan melalui Pengadilan Negeri
-di tempat domisili Pemilik dengan kekuatan hukum tetap.
-
-## 11. Ketentuan umum
-
-- Hak ini tidak dapat dialihkan tanpa persetujuan tertulis Pemilik.
-- Kegagalan menegakkan satu ketentuan bukan pengecualian ketentuan lain.
-- Jika satu ketentuan dinyatakan tidak sah, ketentuan lainnya tetap berlaku.
-- Dokumen ini merupakan keseluruhan kesepakatan lisensi dan menggantikan versi sebelumnya.
-- Akses atau penggunaan Kode dianggap sebagai penerimaan ketentuan ini.
-
-## 12. Hubungan dengan dokumen lain
-
-Lisensi ini tidak menggantikan:
-
-- pengajuan paten ke DGIP sebagaimana `PATENT.md`;
-- NDA dengan karyawan, kontraktor, atau mitra;
-- kontrak komersial tertulis;
-- review regulasi kesehatan dan kepatuhan UU PDP.
-
-## 13. Kontak
-
-Kontak lisensi: akun GitHub `riyanda-ex` melalui repositori
-`https://github.com/riyanda-ex/medi-bot-agency-v3`.
-
-## 14. Penafian akhir
-
-Dokumen ini membantu mengatur hak dan kewajiban, tetapi tidak memberi jaminan mutlak.
-Perlindungan nyata bergantung pada identitas pemilik yang sah, kontrak tertulis,
-pengajuan HKI, NDA, dan kepatuhan operasional. Untuk penggunaan komersial atau klinis,
-minta peninjauan notaris/konsultan hukum dan konsultan paten.
-
----
-
-Riwayat versi:
-
-- v1.0 — proprietary sederhana, all rights reserved.
-- v2.0 — pembatasan diperkuat, ganti rugi, yurisdiksi.
-- v3.0 — versi final siap pakai; Pemilik ditetapkan; tanpa field kosong.
+Revision history:
+- v1.0: initial proprietary notice.
+- v2.0: strengthened restrictions and indemnity.
+- v3.0: final owner-identified proprietary license.
+- v3.1: clarified copyright, no-default-license scope, third-party components, and disclaimers.

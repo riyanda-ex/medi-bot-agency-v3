@@ -146,12 +146,12 @@ enkripsi kunci terkelola, dan DPA provider sesuai UU PDP No. 27/2022.
 
 ## 8. Hak kekayaan intelektual
 
-- `LICENSE` — lisensi **komersial proprietary v3.0 final**: Pemilik ditetapkan sebagai
-  akun GitHub `riyanda-ex`, tanpa lisensi default, Lisensi Evaluasi revokabel, larangan
-  reverse engineering/publicity, rahasia dagang, ganti rugi, dan hukum Indonesia.
+- `LICENSE` — **Proprietary commercial license v3.1 (All Rights Reserved)**. Pemilik:
+  `riyanda-ex`. Tidak ada lisensi default untuk pihak lain; akses repo tidak berarti izin
+  pakai/modifikasi/distribusi. Lisensi evaluasi hanya lewat izin tertulis, revokabel, dan
+  non-komersial. Tidak ada lisensi paten.
 - `PATENT.md` — status paten, draft invensi, draf klaim, dan checklist pengajuan DGIP.
 
 **Paten belum diajukan/diberikan.** Jangan memakai label “PATENT PENDING” atau
 “PATEN TERDAFTAR” sebelum ada bukti resmi dari otoritas paten. Konsultasikan draft klaim dengan
-konsultan paten sebelum pengajuan. Dokumen ini bukan nasihat hukum dan bukan jaminan perlindungan
-dari segala risiko.
+konsultan paten sebelum pengajuan. Dokumen ini bukan nasihat hukum.

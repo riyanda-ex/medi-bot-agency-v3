@@ -164,7 +164,7 @@ Repo ini sudah private dan memiliki audit trail, yang mendukung strategi tersebu
 
 | Item | Status |
 |---|---|
-| Lisensi komersial proprietary v3.0 final | ✅ `LICENSE` |
+| Lisensi komersial proprietary v3.1 (All Rights Reserved) | ✅ `LICENSE` |
 | Draft invensi | ✅ `PATENT.md` |
 | Draf klaim | ✅ bagian 5 |
 | Permohonan DGIP | ❌ Belum dilakukan |

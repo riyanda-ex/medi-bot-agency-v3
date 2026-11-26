@@ -2,6 +2,16 @@
   "name": "medi-bot-agency-v3",
   "version": "0.1.0",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "riyanda-ex (https://github.com/riyanda-ex)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/riyanda-ex/medi-bot-agency-v3.git"
+  },
+  "homepage": "https://github.com/riyanda-ex/medi-bot-agency-v3#readme",
+  "bugs": {
+    "url": "https://github.com/riyanda-ex/medi-bot-agency-v3/issues"
+  },
   "description": "Sistem multi-agent untuk rekam medis klinik Indonesia - fondasi aman, mock by default",
   "scripts": {
     "dev": "next dev",

@@ -113,9 +113,9 @@ agar `npm audit` = 0 vulnerability.
 
 ## 7. Hak kekayaan intelektual
 
-- [x] `LICENSE` v3.0 final: proprietary komersial, Pemilik = `riyanda-ex`, tanpa field kosong,
-      tanpa lisensi default, evaluasi revokabel, larangan reverse engineering/publicity,
-      rahasia dagang, ganti rugi, yurisdiksi Indonesia.
+- [x] `LICENSE` v3.1: proprietary komersial, All Rights Reserved, Pemilik = `riyanda-ex`,
+      tanpa lisensi default, evaluasi tertulis revokabel, larangan reverse engineering/publicity,
+      rahasia dagang, ganti rugi, disclaimer medis, dan yurisdiksi Indonesia.
 - [x] `PATENT.md`: status jujur (belum diajukan), draft invensi, draf klaim teknis,
       checklist DGIP/PCT, dan alternatif rahasia dagang.
 - [x] README bagian 8 merangkum status IP dan larangan label paten palsu.
