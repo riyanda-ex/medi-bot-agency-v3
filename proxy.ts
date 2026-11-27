@@ -58,11 +58,15 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
 
+  const requestId = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+  requestHeaders.set("x-request-id", requestId);
+
   const { pathname } = request.nextUrl;
   const protectedPath = ["/dashboard", "/triage", "/reports", "/audit"].some((p) =>
     pathname.startsWith(p)
   );
 
+  let response: NextResponse;
   if (protectedPath) {
     const token = await getToken({
       req: request,
@@ -70,23 +74,20 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       cookieName: sessionCookieName(request)
     });
     if (!token || token.invalid === true) {
-      return applySecurity(
-        NextResponse.redirect(new URL("/login?error=sesi", request.url)),
-        request,
-        csp
-      );
+      response = NextResponse.redirect(new URL("/login?error=sesi", request.url));
+    } else {
+      const role = String(token.role ?? "TIDAK_AKTIF");
+      if (pathname.startsWith("/audit") && role !== "ADMIN") {
+        response = NextResponse.redirect(new URL("/dashboard?error=akses", request.url));
+      } else {
+        response = NextResponse.next({ request: { headers: requestHeaders } });
+      }
     }
-    const role = String(token.role ?? "TIDAK_AKTIF");
-    if (pathname.startsWith("/audit") && role !== "ADMIN") {
-      return applySecurity(
-        NextResponse.redirect(new URL("/dashboard?error=akses", request.url)),
-        request,
-        csp
-      );
-    }
+  } else {
+    response = NextResponse.next({ request: { headers: requestHeaders } });
   }
-
-  return applySecurity(NextResponse.next({ request: { headers: requestHeaders } }), request, csp);
+  response.headers.set("x-request-id", requestId);
+  return applySecurity(response, request, csp);
 }
 
 export const config = {

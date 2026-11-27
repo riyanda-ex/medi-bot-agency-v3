@@ -305,3 +305,22 @@ model Claim {
   amount    Float?
   createdAt DateTime @default(now())
 }
+
+
+model ApiLog {
+  id         String   @id @default(cuid())
+  requestId  String
+  method     String
+  path       String
+  statusCode Int
+  durationMs Int
+  ip         String?
+  userId     String?
+  userAgent  String?
+  error      String?
+  createdAt  DateTime @default(now())
+
+  @@index([requestId])
+  @@index([createdAt])
+  @@index([path, createdAt])
+}

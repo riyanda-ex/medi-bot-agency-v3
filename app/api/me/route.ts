@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
+import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
 import { authOptions } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
@@ -8,6 +9,9 @@ import { enforceRateLimit, getClientIp } from "@/lib/requestGuard";
 
 /** Data diri pasien: hanya pasien yang bersangkutan yang bisa mengakses. */
 export async function GET(request: Request): Promise<NextResponse> {
+  const requestId = getRequestId(request);
+  const startedAt = Date.now();
+  void startedAt;
   const session = await getServerSession(authOptions);
   const role = session?.user.role ?? "TIDAK_AKTIF";
   const patientId = session?.user.patientId;
@@ -19,7 +23,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       action: "OWN_DATA_DENIED",
       detail: `Peran ${role} mencoba mengakses data diri.`
     });
-    return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
+    return jsonWithRequestId(requestId, { error: "Akses ditolak." }, { status: 403 });
   }
 
   const limited = await enforceRateLimit(
@@ -46,7 +50,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   });
 
   if (!patient) {
-    return NextResponse.json({ error: "Data pasien tidak ditemukan." }, { status: 404 });
+    return jsonWithRequestId(requestId, { error: "Data pasien tidak ditemukan." }, { status: 404 });
   }
 
   await auditApiAccess({
@@ -57,5 +61,5 @@ export async function GET(request: Request): Promise<NextResponse> {
     detail: "Data diri dan appointment dikembalikan dengan NIK termasker."
   });
 
-  return NextResponse.json({ patient });
+  return jsonWithRequestId(requestId, { patient });
 }

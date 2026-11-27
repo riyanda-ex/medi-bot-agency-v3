@@ -13,7 +13,7 @@ prisma/schema.postgres.prisma
 coverage/
 .vitest/
 coverage-*.json
-reports/
+/reports/
 fixes/findings.json
 *.tsbuildinfo
 
@@ -21,3 +21,6 @@ fixes/findings.json
 .env*.local
 .env.production
 .env.development
+
+# Next.js generated
+next-env.d.ts

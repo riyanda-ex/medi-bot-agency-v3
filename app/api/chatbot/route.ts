@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
+import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { auditApiAccess } from "@/lib/audit";
@@ -12,6 +13,9 @@ const bodySchema = z.object({
 
 /** Chatbot edukasi terbatas: butuh sesi, rate limited, tidak menjawab diagnosis personal. */
 export async function POST(request: Request): Promise<NextResponse> {
+  const requestId = getRequestId(request);
+  const startedAt = Date.now();
+  void startedAt;
   const originBlocked = enforceSameOrigin(request);
   if (originBlocked) return originBlocked;
 
@@ -23,7 +27,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       action: "CHATBOT_DENIED",
       detail: "Akses tanpa sesi."
     });
-    return NextResponse.json({ error: "Autentikasi diperlukan." }, { status: 401 });
+    return jsonWithRequestId(requestId, { error: "Autentikasi diperlukan." }, { status: 401 });
   }
 
   const limited = await enforceRateLimit(
@@ -35,7 +39,8 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json(
+    return jsonWithRequestId(
+      requestId,
       { error: "Pesan tidak valid (maksimal 500 karakter)." },
       { status: 400 }
     );
@@ -49,5 +54,5 @@ export async function POST(request: Request): Promise<NextResponse> {
     detail: "Balasan edukasi generik diberikan (isi pesan tidak disimpan)."
   });
 
-  return NextResponse.json({ reply });
+  return jsonWithRequestId(requestId, { reply });
 }

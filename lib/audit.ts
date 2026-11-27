@@ -23,6 +23,7 @@ export interface ApiAuditInput {
   action: string;
   targetPatientId?: string;
   detail?: string;
+  requestId?: string;
 }
 
 function trustedProxies(): string[] {

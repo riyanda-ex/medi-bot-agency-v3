@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
+import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { canApproveOutbound } from "@/lib/rbac";
@@ -19,6 +20,9 @@ const bodySchema = z.object({
 
 /** Approval nyata: hanya DOKTER/ADMIN, tercatat di audit, berlaku 30 menit. */
 export async function POST(request: Request): Promise<NextResponse> {
+  const requestId = getRequestId(request);
+  const startedAt = Date.now();
+  void startedAt;
   const originBlocked = enforceSameOrigin(request);
   if (originBlocked) return originBlocked;
 
@@ -32,7 +36,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       action: "OUTBOUND_APPROVAL_DENIED",
       detail: `Peran ${role} mencoba memberikan approval outbound.`
     });
-    return NextResponse.json(
+    return jsonWithRequestId(
+      requestId,
       { error: "Akses ditolak: approval hanya untuk DOKTER/ADMIN." },
       { status: 403 }
     );
@@ -47,7 +52,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Data tidak valid." }, { status: 400 });
+    return jsonWithRequestId(requestId, { error: "Data tidak valid." }, { status: 400 });
   }
 
   const { scope, resourceId, channels } = parsed.data as {
@@ -61,7 +66,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       where: { id: resourceId },
       select: { id: true }
     });
-    if (!log) return NextResponse.json({ error: "Triage log tidak ditemukan." }, { status: 404 });
+    if (!log)
+      return jsonWithRequestId(
+        requestId,
+        { error: "Triage log tidak ditemukan." },
+        { status: 404 }
+      );
   }
 
   const approval = await createApproval({
@@ -79,7 +89,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     detail: `${approval.approvalId} untuk ${scope}/${resourceId} berlaku sampai ${approval.expiresAt}.`
   });
 
-  return NextResponse.json({
+  return jsonWithRequestId(requestId, {
     approvalId: approval.approvalId,
     scope: approval.scope,
     resourceId: approval.resourceId,

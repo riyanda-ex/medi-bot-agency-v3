@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
+import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
 import { authOptions } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
@@ -7,6 +8,9 @@ import { prisma } from "@/lib/prisma";
 import { enforceRateLimit, getClientIp } from "@/lib/requestGuard";
 
 export async function GET(request: Request): Promise<NextResponse> {
+  const requestId = getRequestId(request);
+  const startedAt = Date.now();
+  void startedAt;
   const session = await getServerSession(authOptions);
   const role = session?.user.role ?? "TIDAK_AKTIF";
 
@@ -20,7 +24,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       action: "PATIENTS_LIST_DENIED",
       detail: `Peran ${role} mencoba membaca daftar pasien.`
     });
-    return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
+    return jsonWithRequestId(requestId, { error: "Akses ditolak." }, { status: 403 });
   }
 
   const limited = await enforceRateLimit(
@@ -43,5 +47,5 @@ export async function GET(request: Request): Promise<NextResponse> {
     detail: `${patients.length} pasien dikembalikan dengan NIK termasker.`
   });
 
-  return NextResponse.json({ patients });
+  return jsonWithRequestId(requestId, { patients });
 }
