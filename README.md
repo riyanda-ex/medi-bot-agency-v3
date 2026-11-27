@@ -14,6 +14,8 @@ MediBot Clinical Operations Platform is a Next.js App Router system that orchest
 
 > **Important medical disclaimer:** This software is a decision-support prototype, **not a certified medical device**. Triage thresholds are internal rules and must be clinically validated before any real-patient use.
 
+![MediBot Clinical Operations Platform social preview](docs/assets/social-preview.png)
+
 ## Table of Contents
 
 - [Key Features](#key-features)

@@ -14,6 +14,8 @@ MediBot Clinical Operations Platform adalah sistem Next.js App Router yang mengo
 
 > **Peringatan medis penting:** Perangkat lunak ini adalah prototipe pendukung keputusan, **bukan alat medis tersertifikasi**. Ambang triase adalah aturan internal dan harus divalidasi secara klinis sebelum digunakan pada pasien nyata.
 
+![Pratinjau sosial MediBot Clinical Operations Platform](docs/assets/social-preview.png)
+
 ## Daftar Isi
 
 - [Fitur Utama](#fitur-utama)
