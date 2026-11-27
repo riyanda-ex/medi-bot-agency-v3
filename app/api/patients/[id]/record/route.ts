@@ -1,11 +1,11 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
 import { canViewDiagnosis, hasPermission } from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { redactRecordForRole } from "@/agents/securityGuard";
-import { enforceRateLimit, getClientIp } from "@/lib/requestGuard";
+import { createApiContext, guardRateLimit, ok } from "@/lib/apiRoute";
+import { jsonWithRequestId } from "@/lib/requestContext";
+import { logApiRequest } from "@/lib/apiLog";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -14,26 +14,36 @@ type RouteContext = { params: Promise<{ id: string }> };
  * ke DOKTER/ADMIN; peran lain menerima field non-diagnosis saja.
  */
 export async function GET(request: Request, context: RouteContext): Promise<NextResponse> {
-  const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "TIDAK_AKTIF";
+  const ctx = await createApiContext(request, "/api/patients/[id]/record");
   const { id } = await context.params;
 
-  if (!hasPermission(role, "patient:read") || session?.user.invalid) {
+  if (!hasPermission(ctx.role, "patient:read") || ctx.sessionInvalid) {
     await auditApiAccess({
       request,
-      session,
+      session: ctx.session,
       action: "RECORD_DENIED",
       targetPatientId: id,
-      detail: `Peran ${role} mencoba membaca rekam medis.`
+      detail: `Peran ${ctx.role} mencoba membaca rekam medis.`,
+      requestId: ctx.requestId
     });
-    return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
+    void logApiRequest({
+      requestId: ctx.requestId,
+      method: "GET",
+      path: ctx.path,
+      statusCode: 403,
+      durationMs: Date.now() - ctx.startedAt,
+      ip: ctx.ip,
+      userId: ctx.userId,
+      error: "forbidden"
+    });
+    return jsonWithRequestId(
+      ctx.requestId,
+      { error: "Akses ditolak.", requestId: ctx.requestId },
+      { status: 403 }
+    );
   }
 
-  const limited = await enforceRateLimit(
-    `record:${session?.user.id ?? getClientIp(request)}`,
-    120,
-    60_000
-  );
+  const limited = await guardRateLimit(ctx, `record:${ctx.userId ?? ctx.ip}`, 120, 60_000);
   if (limited) return limited;
 
   const records = await prisma.medicalRecord.findMany({
@@ -58,20 +68,22 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
     orderBy: { visitDate: "desc" },
     select: { diagnosis: true, icd10: true }
   });
-  const visible = records.map((record) => redactRecordForRole(record, role));
+  const visible = records.map((record) => redactRecordForRole(record, ctx.role));
   await auditApiAccess({
     request,
-    session,
-    action: canViewDiagnosis(role) ? "RECORD_READ_FULL" : "RECORD_READ_REDACTED",
+    session: ctx.session,
+    action: canViewDiagnosis(ctx.role) ? "RECORD_READ_FULL" : "RECORD_READ_REDACTED",
     targetPatientId: id,
-    detail: `${visible.length} rekam medis dikembalikan.`
+    detail: `${visible.length} rekam medis dikembalikan.`,
+    requestId: ctx.requestId
   });
 
-  return NextResponse.json({
+  return ok(ctx, {
     patientId: id,
-    canViewDiagnosis: canViewDiagnosis(role),
-    diagnosis: canViewDiagnosis(role) ? (latestVisit?.diagnosis ?? null) : null,
-    icd10: canViewDiagnosis(role) ? (latestVisit?.icd10 ?? null) : null,
-    records: visible
+    canViewDiagnosis: canViewDiagnosis(ctx.role),
+    diagnosis: canViewDiagnosis(ctx.role) ? (latestVisit?.diagnosis ?? null) : null,
+    icd10: canViewDiagnosis(ctx.role) ? (latestVisit?.icd10 ?? null) : null,
+    records: visible,
+    requestId: ctx.requestId
   });
 }

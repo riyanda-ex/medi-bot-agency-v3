@@ -52,7 +52,9 @@ export async function GET(request: Request): Promise<NextResponse> {
     method: "GET",
     path: "/api/ready",
     statusCode: status,
-    durationMs: Date.now() - startedAt
+    durationMs: Date.now() - startedAt,
+    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    error: ready ? null : "not_ready"
   });
   return jsonWithRequestId(
     requestId,
