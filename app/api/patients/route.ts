@@ -1,51 +1,63 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
-import { authOptions } from "@/lib/auth";
-import { hasPermission } from "@/lib/rbac";
-import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { enforceRateLimit, getClientIp } from "@/lib/requestGuard";
+import { maskNik } from "@/lib/crypto";
+import { createApiContext, deny, guardRateLimit, ok, requirePermission } from "@/lib/apiRoute";
 
 export async function GET(request: Request): Promise<NextResponse> {
-  const requestId = getRequestId(request);
-  const startedAt = Date.now();
-  void startedAt;
-  const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "TIDAK_AKTIF";
-
-  if (
-    (!hasPermission(role, "patient:read") && !hasPermission(role, "triage:write")) ||
-    session?.user.invalid
-  ) {
-    await auditApiAccess({
-      request,
-      session,
-      action: "PATIENTS_LIST_DENIED",
-      detail: `Peran ${role} mencoba membaca daftar pasien.`
-    });
-    return jsonWithRequestId(requestId, { error: "Akses ditolak." }, { status: 403 });
-  }
-
-  const limited = await enforceRateLimit(
-    `patients:${session?.user.id ?? getClientIp(request)}`,
+  const ctx = await createApiContext(request, "/api/patients");
+  if (!requirePermission(ctx, "patient:read"))
+    return deny(ctx, 403, "Akses ditolak.", "PATIENT_LIST_DENIED");
+  const limited = await guardRateLimit(
+    ctx,
+    `patients:${ctx.session?.user.id ?? ctx.ip}`,
     120,
     60_000
   );
   if (limited) return limited;
-
+  const canReadNik = requirePermission(ctx, "patient:read_nik");
+  const canReadDiagnosis = requirePermission(ctx, "patient:read_diagnosis");
+  const canReadContact = requirePermission(ctx, "patient:read_contact");
   const patients = await prisma.patient.findMany({
-    select: { id: true, name: true, nikMasked: true },
-    orderBy: { name: "asc" },
+    include: {
+      visits: {
+        orderBy: { visitDate: "desc" },
+        take: 1,
+        include: { triageLogs: { orderBy: { createdAt: "desc" }, take: 1 } }
+      }
+    },
+    orderBy: { createdAt: "desc" },
     take: 100
   });
-
-  await auditApiAccess({
-    request,
-    session,
-    action: "PATIENTS_LIST",
-    detail: `${patients.length} pasien dikembalikan dengan NIK termasker.`
+  const rows = patients.map((p) => {
+    const lastVisit = p.visits[0];
+    const lastTriage = lastVisit?.triageLogs[0];
+    return {
+      id: p.id,
+      name: p.name,
+      nik: canReadNik ? maskNik(p.nikEncrypted) : "************",
+      birthDate: p.birthDate.toISOString(),
+      gender: "-",
+      phone: canReadContact ? "********" : "********",
+      address: canReadContact ? p.address : "Dibatasi",
+      bpjsNo: null,
+      insuranceType: null,
+      allergies: p.allergies,
+      chronicDiseases: null,
+      lastVisit: lastVisit
+        ? {
+            date: lastVisit.visitDate.toISOString(),
+            complaint: lastVisit.complaint,
+            diagnosis: canReadDiagnosis
+              ? lastVisit.diagnosis
+              : "Hanya dokter dapat melihat diagnosis",
+            icd10: canReadDiagnosis ? lastVisit.icd10 : null,
+            status: lastVisit.status,
+            triage: lastTriage
+              ? { level: lastTriage.level, reasons: JSON.parse(lastTriage.reasons) }
+              : null
+          }
+        : null
+    };
   });
-
-  return jsonWithRequestId(requestId, { patients });
+  return ok(ctx, { patients: rows, requestId: ctx.requestId });
 }

@@ -1,13 +1,10 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
 import { canApproveOutbound } from "@/lib/rbac";
-import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { createApproval, type ApprovalScope } from "@/lib/approval";
-import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestGuard";
+import { createApiContext, deny, guardOrigin, guardRateLimit, ok } from "@/lib/apiRoute";
+import { auditApiAccess } from "@/lib/audit";
 
 const bodySchema = z.object({
   scope: z.enum(["URGENT", "REPORT"]),
@@ -18,81 +15,54 @@ const bodySchema = z.object({
     .max(4)
 });
 
-/** Approval nyata: hanya DOKTER/ADMIN, tercatat di audit, berlaku 30 menit. */
 export async function POST(request: Request): Promise<NextResponse> {
-  const requestId = getRequestId(request);
-  const startedAt = Date.now();
-  void startedAt;
-  const originBlocked = enforceSameOrigin(request);
+  const ctx = await createApiContext(request, "/api/urgent/approve");
+  const originBlocked = guardOrigin(ctx);
   if (originBlocked) return originBlocked;
-
-  const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "TIDAK_AKTIF";
-
-  if (!canApproveOutbound(role) || session?.user.invalid) {
-    await auditApiAccess({
-      request,
-      session,
-      action: "OUTBOUND_APPROVAL_DENIED",
-      detail: `Peran ${role} mencoba memberikan approval outbound.`
-    });
-    return jsonWithRequestId(
-      requestId,
-      { error: "Akses ditolak: approval hanya untuk DOKTER/ADMIN." },
-      { status: 403 }
+  if (!canApproveOutbound(ctx.role) || ctx.sessionInvalid) {
+    return deny(
+      ctx,
+      403,
+      "Akses ditolak: approval hanya untuk DOKTER/ADMIN.",
+      "OUTBOUND_APPROVAL_DENIED",
+      `Peran ${ctx.role} mencoba memberikan approval outbound.`
     );
   }
-
-  const limited = await enforceRateLimit(
-    `approve:${session?.user.id ?? getClientIp(request)}`,
-    30,
-    60_000
-  );
+  const limited = await guardRateLimit(ctx, `approve:${ctx.userId ?? ctx.ip}`, 30, 60_000);
   if (limited) return limited;
-
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    return jsonWithRequestId(requestId, { error: "Data tidak valid." }, { status: 400 });
-  }
-
+  if (!parsed.success) return deny(ctx, 400, "Data tidak valid.", "OUTBOUND_APPROVAL_INVALID");
   const { scope, resourceId, channels } = parsed.data as {
     scope: ApprovalScope;
     resourceId: string;
     channels: string[];
   };
-
   if (scope === "URGENT") {
     const log = await prisma.triageLog.findUnique({
       where: { id: resourceId },
       select: { id: true }
     });
-    if (!log)
-      return jsonWithRequestId(
-        requestId,
-        { error: "Triage log tidak ditemukan." },
-        { status: 404 }
-      );
+    if (!log) return deny(ctx, 404, "Triage log tidak ditemukan.", "OUTBOUND_APPROVAL_NOT_FOUND");
   }
-
   const approval = await createApproval({
     scope,
     resourceId,
-    approverId: session!.user.id,
-    role,
+    approverId: ctx.userId!,
+    role: ctx.role,
     channels
   });
-
   await auditApiAccess({
-    request,
-    session,
+    request: ctx.request,
+    session: ctx.session,
     action: "OUTBOUND_APPROVAL_GRANTED",
-    detail: `${approval.approvalId} untuk ${scope}/${resourceId} berlaku sampai ${approval.expiresAt}.`
+    detail: `${approval.approvalId} untuk ${scope}/${resourceId} berlaku sampai ${approval.expiresAt}.`,
+    requestId: ctx.requestId
   });
-
-  return jsonWithRequestId(requestId, {
+  return ok(ctx, {
     approvalId: approval.approvalId,
     scope: approval.scope,
     resourceId: approval.resourceId,
-    expiresAt: approval.expiresAt
+    expiresAt: approval.expiresAt,
+    requestId: ctx.requestId
   });
 }
