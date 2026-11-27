@@ -1,5 +1,7 @@
 # MEDI-BOT AGENCY v3
 
+**English** | [Bahasa Indonesia](README.id.md)
+
 > Multi-agent clinical operations foundation for Indonesian clinics — secure by default, mock by default, auditable by design.
 
 [![CI](https://github.com/riyanda-ex/medi-bot-agency-v3/actions/workflows/ci.yml/badge.svg)](https://github.com/riyanda-ex/medi-bot-agency-v3/actions/workflows/ci.yml)
