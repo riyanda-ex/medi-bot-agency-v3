@@ -8,6 +8,9 @@ import { prisma } from "@/lib/prisma";
 import { runUrgentTriage } from "@/agents/urgentCaller";
 import { writeAgentLog } from "@/lib/agentLog";
 import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestGuard";
+import { getRequestId, jsonWithRequestId, withRequestId } from "@/lib/requestContext";
+import { logApiRequest } from "@/lib/apiLog";
+import { logger } from "@/lib/logger";
 
 const vitalsSchema = z.object({
   systolic: z.number().int().min(0).max(300).nullable().optional(),
@@ -30,10 +33,22 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const originBlocked = enforceSameOrigin(request);
-  if (originBlocked) return originBlocked;
-
+  const requestId = getRequestId(request);
   const startedAt = Date.now();
+  const originBlocked = enforceSameOrigin(request);
+  if (originBlocked) {
+    void logApiRequest({
+      requestId,
+      method: "POST",
+      path: "/api/triage",
+      statusCode: 403,
+      durationMs: Date.now() - startedAt,
+      ip: getClientIp(request),
+      error: "origin"
+    });
+    return withRequestId(originBlocked, requestId);
+  }
+
   const session = await getServerSession(authOptions);
   const role = session?.user.role ?? "TIDAK_AKTIF";
 
@@ -42,10 +57,22 @@ export async function POST(request: Request): Promise<NextResponse> {
       request,
       session,
       action: "TRIAGE_DENIED",
-      detail: `Peran ${role} mencoba melakukan triage.`
+      detail: `Peran ${role} mencoba melakukan triage.`,
+      requestId
     });
-    return NextResponse.json(
-      { error: "Akses ditolak: peran Anda tidak boleh melakukan triage." },
+    void logApiRequest({
+      requestId,
+      method: "POST",
+      path: "/api/triage",
+      statusCode: 403,
+      durationMs: Date.now() - startedAt,
+      ip: getClientIp(request),
+      userId: session?.user.id,
+      error: "forbidden"
+    });
+    return jsonWithRequestId(
+      requestId,
+      { error: "Akses ditolak: peran Anda tidak boleh melakukan triage.", requestId },
       { status: 403 }
     );
   }
@@ -55,19 +82,56 @@ export async function POST(request: Request): Promise<NextResponse> {
     60,
     60_000
   );
-  if (limited) return limited;
+  if (limited) {
+    void logApiRequest({
+      requestId,
+      method: "POST",
+      path: "/api/triage",
+      statusCode: 429,
+      durationMs: Date.now() - startedAt,
+      ip: getClientIp(request),
+      userId: session?.user.id,
+      error: "rate_limited"
+    });
+    return withRequestId(limited, requestId);
+  }
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Data tidak valid.", detail: parsed.error.flatten() },
+    void logApiRequest({
+      requestId,
+      method: "POST",
+      path: "/api/triage",
+      statusCode: 400,
+      durationMs: Date.now() - startedAt,
+      ip: getClientIp(request),
+      userId: session?.user.id,
+      error: "invalid_payload"
+    });
+    return jsonWithRequestId(
+      requestId,
+      { error: "Data tidak valid.", detail: parsed.error.flatten(), requestId },
       { status: 400 }
     );
   }
 
   const patient = await prisma.patient.findUnique({ where: { id: parsed.data.patientId } });
   if (!patient) {
-    return NextResponse.json({ error: "Pasien tidak ditemukan." }, { status: 404 });
+    void logApiRequest({
+      requestId,
+      method: "POST",
+      path: "/api/triage",
+      statusCode: 404,
+      durationMs: Date.now() - startedAt,
+      ip: getClientIp(request),
+      userId: session?.user.id,
+      error: "patient_not_found"
+    });
+    return jsonWithRequestId(
+      requestId,
+      { error: "Pasien tidak ditemukan.", requestId },
+      { status: 404 }
+    );
   }
 
   const { vitals } = parsed.data;
@@ -111,13 +175,30 @@ export async function POST(request: Request): Promise<NextResponse> {
     session,
     action: "TRIAGE_SUBMIT",
     targetPatientId: patient.id,
-    detail: `Level ${result.level}, triageLog ${result.triageLogId}, latensi ${Date.now() - startedAt} ms.`
+    detail: `Level ${result.level}, triageLog ${result.triageLogId}, latensi ${Date.now() - startedAt} ms.`,
+    requestId
   });
-
-  return NextResponse.json({
+  logger.info("triage.submit", {
+    requestId,
+    patientId: patient.id,
+    level: result.level,
+    latencyMs: Date.now() - startedAt,
+    actorId: session?.user.id
+  });
+  void logApiRequest({
+    requestId,
+    method: "POST",
+    path: "/api/triage",
+    statusCode: 200,
+    durationMs: Date.now() - startedAt,
+    ip: getClientIp(request),
+    userId: session?.user.id
+  });
+  return jsonWithRequestId(requestId, {
     ...result,
     latencyMs: Date.now() - startedAt,
     visitId: visit.id,
-    patientName: patient.name
+    patientName: patient.name,
+    requestId
   });
 }

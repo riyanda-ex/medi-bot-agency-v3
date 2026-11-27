@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
+import { logApiRequest } from "@/lib/apiLog";
 import { prisma } from "@/lib/prisma";
 import { isQueueEnabled } from "@/lib/queue";
 import Redis from "ioredis";
@@ -26,7 +28,9 @@ async function checkRedis(): Promise<{ ok: boolean; detail: string }> {
   }
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
+  const requestId = getRequestId(request);
+  const startedAt = Date.now();
   const checks: Record<string, { ok: boolean; detail: string }> = {
     database: { ok: false, detail: "unknown" },
     redis: { ok: false, detail: "unknown" }
@@ -42,7 +46,16 @@ export async function GET(): Promise<NextResponse> {
   checks.redis = await checkRedis();
 
   const ready = Object.values(checks).every((c) => c.ok);
-  return NextResponse.json(
+  const status = ready ? 200 : 503;
+  void logApiRequest({
+    requestId,
+    method: "GET",
+    path: "/api/ready",
+    statusCode: status,
+    durationMs: Date.now() - startedAt
+  });
+  return jsonWithRequestId(
+    requestId,
     {
       status: ready ? "ready" : "not_ready",
       timestamp: new Date().toISOString(),

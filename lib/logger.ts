@@ -13,7 +13,7 @@ function shouldLog(level: Level): boolean {
   return LEVELS[level] >= LEVELS[currentLevel()];
 }
 
-function log(level: Level, event: string, fields: Record<string, unknown> = {}): void {
+export function logEvent(level: Level, event: string, fields: Record<string, unknown> = {}): void {
   if (!shouldLog(level)) return;
   const entry = {
     ts: new Date().toISOString(),
@@ -30,8 +30,8 @@ function log(level: Level, event: string, fields: Record<string, unknown> = {}):
 }
 
 export const logger = {
-  debug: (event: string, fields?: Record<string, unknown>) => log("debug", event, fields),
-  info: (event: string, fields?: Record<string, unknown>) => log("info", event, fields),
-  warn: (event: string, fields?: Record<string, unknown>) => log("warn", event, fields),
-  error: (event: string, fields?: Record<string, unknown>) => log("error", event, fields)
+  debug: (event: string, fields?: Record<string, unknown>) => logEvent("debug", event, fields),
+  info: (event: string, fields?: Record<string, unknown>) => logEvent("info", event, fields),
+  warn: (event: string, fields?: Record<string, unknown>) => logEvent("warn", event, fields),
+  error: (event: string, fields?: Record<string, unknown>) => logEvent("error", event, fields)
 };

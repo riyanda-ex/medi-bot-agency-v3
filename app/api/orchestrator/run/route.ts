@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
+import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
 import { authOptions } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
@@ -8,6 +9,9 @@ import { runAllAgents } from "@/agents/orchestrator";
 import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestGuard";
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const requestId = getRequestId(request);
+  const startedAt = Date.now();
+  void startedAt;
   const originBlocked = enforceSameOrigin(request);
   if (originBlocked) return originBlocked;
 
@@ -21,7 +25,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       action: "AGENT_RUN_DENIED",
       detail: `Peran ${role} mencoba menjalankan agent.`
     });
-    return NextResponse.json(
+    return jsonWithRequestId(
+      requestId,
       { error: "Akses ditolak: hanya ADMIN yang bisa menjalankan agent." },
       { status: 403 }
     );
@@ -44,12 +49,13 @@ export async function POST(request: Request): Promise<NextResponse> {
   });
 
   if (queued.mode === "redis") {
-    return NextResponse.json(
+    return jsonWithRequestId(
+      requestId,
       { queued: true, jobId: queued.jobId, detail: queued.detail },
       { status: 202 }
     );
   }
 
   const result = await runAllAgents();
-  return NextResponse.json(result);
+  return jsonWithRequestId(requestId, result);
 }
