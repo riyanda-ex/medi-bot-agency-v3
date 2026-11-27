@@ -30,13 +30,16 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const { searchParams } = new URL(request.url);
   const reportId = searchParams.get("reportId");
-  const format = searchParams.get("format");
-  if (!reportId || (format !== "pdf" && format !== "excel")) {
+  const formatParam = searchParams.get("format") ?? searchParams.get("type");
+  const format = formatParam === "excel" || formatParam === "xlsx" ? "excel" : formatParam === "pdf" ? "pdf" : null;
+  if (!format) {
     log(400, "invalid_query");
-    return withRequestId(NextResponse.json({ error: "Parameter reportId dan format (pdf/excel) wajib diisi.", requestId }, { status: 400 }), requestId);
+    return withRequestId(NextResponse.json({ error: "Parameter format/type (pdf/excel) wajib diisi.", requestId }, { status: 400 }), requestId);
   }
 
-  const report = await prisma.report.findUnique({ where: { id: reportId } });
+  const report = reportId
+    ? await prisma.report.findUnique({ where: { id: reportId } })
+    : await prisma.report.findFirst({ orderBy: { createdAt: "desc" } });
   if (!report) { log(404, "not_found"); return withRequestId(NextResponse.json({ error: "Laporan tidak ditemukan.", requestId }, { status: 404 }), requestId); }
 
   const filePath = format === "pdf" ? report.filePathPdf : report.filePathExcel;
