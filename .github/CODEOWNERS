@@ -13,3 +13,8 @@
 /proxy.ts @riyanda-ex
 /next.config.mjs @riyanda-ex
 /.github/workflows/ @riyanda-ex
+
+/docs/SECURITY.md @riyanda-ex
+/docs/THREAT-MODEL.md @riyanda-ex
+/docs/INCIDENT-RESPONSE.md @riyanda-ex
+/docs/GITHUB-SETUP.md @riyanda-ex
