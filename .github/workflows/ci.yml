@@ -30,11 +30,12 @@ jobs:
     name: Verifikasi Windows PowerShell
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-node@v4.4.0
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 22
           cache: npm
+      - run: npm install -g npm@11
       - run: npm ci
       - run: npm run db:setup
       - run: npm run lint
@@ -44,8 +45,8 @@ jobs:
       - run: npm run openapi:check
       - run: npm run build
       - run: npm audit --audit-level=high
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - uses: actions/upload-artifact@v7.0.2
+        if: always() && hashFiles('coverage/**') != ''
         with:
           name: coverage-windows
           path: coverage
@@ -81,11 +82,12 @@ jobs:
       REDIS_URL: redis://localhost:6379
       SYNC_MODE: "false"
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-node@v4.4.0
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 22
           cache: npm
+      - run: npm install -g npm@11
       - run: npm ci
       - run: npm run prisma:generate:pg
       - run: npx prisma db push --schema prisma/schema.postgres.prisma
@@ -140,11 +142,12 @@ jobs:
       SYNC_MODE: "false"
       QUEUE_MODE: redis
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-node@v4.4.0
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 22
           cache: npm
+      - run: npm install -g npm@11
       - run: npm ci
       - run: npm run prisma:generate:pg
       - run: npx prisma db push --schema prisma/schema.postgres.prisma

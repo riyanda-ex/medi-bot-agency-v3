@@ -2,6 +2,7 @@
   "name": "medibot-clinical-ops",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "author": "riyanda-ex (https://github.com/riyanda-ex)",
   "repository": {
@@ -43,13 +44,17 @@
     "verify:all": "npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build && npm run openapi:check"
   },
   "dependencies": {
-    "@prisma/client": "5.22.0",
+    "@prisma/adapter-better-sqlite3": "7.10.1",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
     "@radix-ui/react-slot": "1.1.1",
     "bcryptjs": "2.4.3",
+    "better-sqlite3": "12.6.0",
     "bullmq": "6.7.10",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "date-fns": "4.1.0",
+    "dotenv": "18.0.10",
     "exceljs": "4.4.0",
     "ioredis": "6.1.0",
     "lucide-react": "0.468.0",
@@ -58,16 +63,18 @@
     "node-cron": "4.6.0",
     "nodemailer": "10.6.1",
     "pdfkit": "0.21.0",
+    "pg": "8.23.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "tailwind-merge": "2.6.0",
-    "zod": "4.6.7",
-    "tsx": "4.23.15"
+    "tsx": "4.23.15",
+    "zod": "4.6.7"
   },
   "overrides": {
     "exceljs": {
       "uuid": "11.1.1"
-    }
+    },
+    "effect": "3.22.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "2.4.6",
@@ -77,6 +84,7 @@
     "@types/pdfkit": "^0.17.7",
     "@types/react": "19.3.3",
     "@types/react-dom": "19.3.0",
+    "@typescript/native": "npm:typescript@7.0.2",
     "@vitest/coverage-v8": "^5.1.2",
     "autoprefixer": "10.4.20",
     "eslint": "^10.15.0",
@@ -84,9 +92,9 @@
     "eslint-config-prettier": "^10.1.8",
     "postcss": "8.5.33",
     "prettier": "^3.10.1",
-    "prisma": "5.22.0",
+    "prisma": "7.10.1",
     "tailwindcss": "3.4.17",
-    "typescript": "5.7.3",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "vite": "8.4.0",
     "vitest": "5.1.2"
   },

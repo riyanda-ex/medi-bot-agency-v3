@@ -1,10 +1,11 @@
-import { PrismaClient, type Doctor, type Patient } from "@prisma/client";
+import { PrismaClient, type Doctor, type Patient } from "../generated/prisma/client";
 import bcrypt from "bcryptjs";
 import { encryptField, fieldHash, maskNik } from "../lib/crypto";
 import { evaluateTriage } from "../lib/triageRules";
 import { isProductionRuntime, isProductionSecret } from "../lib/env";
+import { createPrismaAdapter } from "../lib/prisma-adapter";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: createPrismaAdapter() });
 
 interface Vitals {
   systolic: number;
