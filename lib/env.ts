@@ -83,8 +83,9 @@ export function assertSecureEnvironment(): EnvironmentCheck {
       errors.push("REQUIRE_HUMAN_APPROVAL tidak boleh false di produksi");
     }
     const nextAuthUrl = process.env.NEXTAUTH_URL ?? "";
-    if (!nextAuthUrl.startsWith("https://")) {
-      errors.push("NEXTAUTH_URL produksi wajib https://");
+    const isLocalhostHttp = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(nextAuthUrl);
+    if (!nextAuthUrl.startsWith("https://") && !isLocalhostHttp) {
+      errors.push("NEXTAUTH_URL produksi wajib https:// (http://localhost hanya untuk CI/lokal)");
     }
     // Rate limit terpusat wajib di produksi kecuali eksplisit diizinkan untuk single-instance.
     if (

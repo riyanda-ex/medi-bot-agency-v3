@@ -23,6 +23,7 @@ env:
   ALLOW_SEED: "true"
   SEED_PASSWORD: Tn8wQ3xR6mV2kP9sY4dH7bJ1fL5cZ0aG
   E2E_PASSWORD: Tn8wQ3xR6mV2kP9sY4dH7bJ1fL5cZ0aG
+  DATABASE_URL: "file:./dev.db"
 
 jobs:
   verify-windows:
