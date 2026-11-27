@@ -15,3 +15,8 @@ coverage/
 reports/
 fixes/findings.json
 *.tsbuildinfo
+
+# Local env files
+.env*.local
+.env.production
+.env.development

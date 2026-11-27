@@ -61,21 +61,24 @@ produksi ditolak kecuali `ALLOW_SEED=true` dengan `SEED_PASSWORD` acak minimal 3
 
 ## 4. Struktur
 
+Struktur detail dan aturan penempatan file: [`docs/STRUCTURE.md`](docs/STRUCTURE.md).
+
 ```
-app/                 UI + API Next.js (dashboard, triage, reports, audit, login,
-                     /api/me, /api/chatbot, /api/urgent/approve)
+app/                 UI + API Next.js (dashboard, triage, reports, audit, login, API)
 agents/              Tujuh agent sesuai spesifikasi, satu file per agent
-lib/                 env, auth, rbac, audit, approval, crypto, rateLimit, queue,
-                     triageRules, whatsapp, phone, prisma, agentLog, reportFiles
+lib/                 env, auth, rbac, audit, approval, crypto, rateLimit, requestGuard,
+                     queue, triageRules, whatsapp, phone, prisma, agentLog, reportFiles
 prisma/              schema.prisma (17 model) + seed.ts
 tests/               triage.test.ts + hardening.test.ts
 fixes/               Artefak scan Bug Hunter (read-only) + tes helper
-components/ui/       Komponen shadcn/ui
-scripts/             Generator schema PostgreSQL, E2E, queue check, worker antrean
-.github/workflows/   CI Windows + PostgreSQL/Redis/E2E + worker BullMQ
+components/          Komponen UI dan panel aplikasi
+scripts/             E2E, queue check, worker antrean, schema PostgreSQL
+docs/                Dokumentasi struktur/operasional
+.github/             CI, Dependabot, CODEOWNERS, template issue/PR
 docker-compose.yml   PostgreSQL + Redis untuk produksi (loopback + password)
 PLAN.md              Rencana kerja & status
 TESTING.md           Protokol pengujian
+SECURITY.md          Kebijakan pelaporan kerentanan
 ```
 
 ## 5. Provider dan pengaman yang bisa diganti lewat `.env`

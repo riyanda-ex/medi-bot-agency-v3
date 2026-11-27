@@ -1,0 +1,15 @@
+# Default owner for review.
+* @riyanda-ex
+
+# Security-sensitive areas.
+/lib/auth.ts @riyanda-ex
+/lib/rbac.ts @riyanda-ex
+/lib/crypto.ts @riyanda-ex
+/lib/audit.ts @riyanda-ex
+/lib/approval.ts @riyanda-ex
+/lib/env.ts @riyanda-ex
+/lib/queue.ts @riyanda-ex
+/lib/requestGuard.ts @riyanda-ex
+/proxy.ts @riyanda-ex
+/next.config.mjs @riyanda-ex
+/.github/workflows/ @riyanda-ex
