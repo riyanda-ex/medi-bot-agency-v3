@@ -10,15 +10,6 @@ updates:
         update-types:
           - "minor"
           - "patch"
-    # TypeScript >=6.1 belum didukung typescript-eslint, Prisma 7 butuh
-    # migrasi prisma.config.ts/adapter. Keduanya ditangani manual.
-    ignore:
-      - dependency-name: "typescript"
-        versions: [">=6.1.0"]
-      - dependency-name: "prisma"
-        versions: [">=7.0.0"]
-      - dependency-name: "@prisma/client"
-        versions: [">=7.0.0"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

@@ -25,7 +25,14 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   output: "standalone",
-  serverExternalPackages: ["@prisma/client", "bcryptjs", "bullmq", "ioredis"],
+  serverExternalPackages: [
+    "@prisma/adapter-better-sqlite3",
+    "@prisma/adapter-pg",
+    "@prisma/client",
+    "bcryptjs",
+    "bullmq",
+    "ioredis"
+  ],
   async headers() {
     return [
       {
