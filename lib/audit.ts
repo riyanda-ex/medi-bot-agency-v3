@@ -32,14 +32,12 @@ function trustedProxies(): string[] {
     .filter(Boolean);
 }
 
-type HeaderBag =
-  | Headers
-  | Record<string, string | string[] | undefined>;
+type HeaderBag = Headers | Record<string, string | string[] | undefined>;
 
 function headerValue(headers: HeaderBag, name: string): string | null {
   if (headers instanceof Headers) return headers.get(name);
   const raw = headers[name] ?? headers[name.toLowerCase()];
-  return Array.isArray(raw) ? (raw[0] ?? null) : raw ?? null;
+  return Array.isArray(raw) ? (raw[0] ?? null) : (raw ?? null);
 }
 
 function cleanIp(value: string | null | undefined): string | null {
@@ -100,9 +98,7 @@ export async function auditApiAccess(input: ApiAuditInput): Promise<void> {
       method: input.request.method,
       path: url.pathname,
       userAgent,
-      detail: anonymous
-        ? `AKSES_TANPA_SESI | ${input.detail ?? ""}`
-        : input.detail
+      detail: anonymous ? `AKSES_TANPA_SESI | ${input.detail ?? ""}` : input.detail
     });
   } catch (error) {
     console.error("[AUDIT] Gagal mencatat akses API:", (error as Error).message);

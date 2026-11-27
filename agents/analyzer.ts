@@ -77,7 +77,9 @@ export async function analyzeMedicalRecord(medicalRecordId: string): Promise<Ana
   };
 
   const missingFields = REQUIRED_FIELDS.filter((field) => !present[field]);
-  const score = Math.round(((REQUIRED_FIELDS.length - missingFields.length) / REQUIRED_FIELDS.length) * 100);
+  const score = Math.round(
+    ((REQUIRED_FIELDS.length - missingFields.length) / REQUIRED_FIELDS.length) * 100
+  );
   const criticalErrors: string[] = [];
 
   const duplicate = await prisma.patient.findFirst({
@@ -98,8 +100,7 @@ export async function analyzeMedicalRecord(medicalRecordId: string): Promise<Ana
     criticalErrors.push("ERROR KRITIS: Pasien hamil menerima obat kategori X.");
   }
 
-  const level: "MERAH" | "HIJAU" =
-    criticalErrors.length > 0 || score < 70 ? "MERAH" : "HIJAU";
+  const level: "MERAH" | "HIJAU" = criticalErrors.length > 0 || score < 70 ? "MERAH" : "HIJAU";
 
   const result: AnalyzerResult = {
     medicalRecordId: record.id,
@@ -126,7 +127,11 @@ export async function analyzeMedicalRecord(medicalRecordId: string): Promise<Ana
   return result;
 }
 
-export async function runAnalyzer(): Promise<{ analyzed: number; merah: number; results: AnalyzerResult[] }> {
+export async function runAnalyzer(): Promise<{
+  analyzed: number;
+  merah: number;
+  results: AnalyzerResult[];
+}> {
   const records = await prisma.medicalRecord.findMany({ select: { id: true } });
   const results: AnalyzerResult[] = [];
   for (const record of records) {

@@ -23,7 +23,9 @@ function cookieHeader(jar) {
 
 async function login(email, password = PASSWORD) {
   const jar = new Map();
-  const csrfResponse = await fetch(`${BASE}/api/auth/csrf`, { headers: { cookie: cookieHeader(jar) } });
+  const csrfResponse = await fetch(`${BASE}/api/auth/csrf`, {
+    headers: { cookie: cookieHeader(jar) }
+  });
   storeCookies(csrfResponse, jar);
   const { csrfToken } = await csrfResponse.json();
 
@@ -71,7 +73,9 @@ async function main() {
   const patientAuth = { cookie: cookieHeader(patient) };
 
   const doctorDashboard = await (await fetch(`${BASE}/dashboard`, { headers: doctorAuth })).text();
-  const receptionistDashboard = await (await fetch(`${BASE}/dashboard`, { headers: receptionistAuth })).text();
+  const receptionistDashboard = await (
+    await fetch(`${BASE}/dashboard`, { headers: receptionistAuth })
+  ).text();
   await check(
     "DOKTER melihat diagnosis nyata di dashboard",
     doctorDashboard.includes("Lihat diagnosis:") &&
@@ -80,7 +84,8 @@ async function main() {
   );
   await check(
     "RESEPSIONIS tidak melihat diagnosis di dashboard",
-    receptionistDashboard.includes(">DITOLAK<") && !receptionistDashboard.includes(EXPECTED_DIAGNOSIS)
+    receptionistDashboard.includes(">DITOLAK<") &&
+      !receptionistDashboard.includes(EXPECTED_DIAGNOSIS)
   );
 
   const { body: patientsBody } = await jsonFetch(`${BASE}/api/patients`, { headers: doctorAuth });
@@ -99,7 +104,11 @@ async function main() {
       break;
     }
   }
-  await check("Rekam medis DOKTER memuat diagnosis nyata", Boolean(diagnosisPatientId), diagnosisPatientId);
+  await check(
+    "Rekam medis DOKTER memuat diagnosis nyata",
+    Boolean(diagnosisPatientId),
+    diagnosisPatientId
+  );
 
   const receptionistRecordResponse = await fetch(
     `${BASE}/api/patients/${diagnosisPatientId}/record`,
@@ -108,7 +117,8 @@ async function main() {
   const receptionistRecordText = await receptionistRecordResponse.text();
   await check(
     "RESEPSIONIS diblokir endpoint diagnosis",
-    receptionistRecordResponse.status === 403 && !receptionistRecordText.includes(EXPECTED_DIAGNOSIS)
+    receptionistRecordResponse.status === 403 &&
+      !receptionistRecordText.includes(EXPECTED_DIAGNOSIS)
   );
 
   const { body: ownData } = await jsonFetch(`${BASE}/api/me`, { headers: patientAuth });
@@ -121,7 +131,10 @@ async function main() {
     headers: { "Content-Type": "application/json", ...patientAuth },
     body: JSON.stringify({ message: "Kapan pengingat obat dikirim?" })
   });
-  await check("Chatbot edukasi merespons", typeof chat.reply === "string" && chat.reply.length > 10);
+  await check(
+    "Chatbot edukasi merespons",
+    typeof chat.reply === "string" && chat.reply.length > 10
+  );
 
   const startedAt = Date.now();
   const { body: triage } = await jsonFetch(`${BASE}/api/triage`, {
@@ -153,11 +166,14 @@ async function main() {
   );
 
   // Buat laporan lebih dulu: dari database kosong pun unduhan tetap berhasil.
-  const { response: generateResponse, body: generated } = await jsonFetch(`${BASE}/api/reports/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...adminAuth },
-    body: JSON.stringify({})
-  });
+  const { response: generateResponse, body: generated } = await jsonFetch(
+    `${BASE}/api/reports/generate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...adminAuth },
+      body: JSON.stringify({})
+    }
+  );
   await check(
     "Generate laporan mengembalikan metrik nyata",
     generateResponse.status === 200 &&
@@ -174,7 +190,9 @@ async function main() {
     `status=${pdfResponse.status}`
   );
 
-  const excelResponse = await fetch(`${BASE}/api/reports/download?type=excel`, { headers: doctorAuth });
+  const excelResponse = await fetch(`${BASE}/api/reports/download?type=excel`, {
+    headers: doctorAuth
+  });
   const excel = Buffer.from(await excelResponse.arrayBuffer());
   await check(
     "Download Excel",

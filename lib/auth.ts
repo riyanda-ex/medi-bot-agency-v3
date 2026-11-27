@@ -37,9 +37,11 @@ export const authOptions: NextAuthOptions = {
         const ip = getRequestIp(headers);
         const rateKey = `login:${ip}:${email}`;
         pruneRateLimits();
-        const rate = checkRateLimit(rateKey, LOGIN_LIMIT, LOGIN_WINDOW_MS);
+        const rate = await checkRateLimit(rateKey, LOGIN_LIMIT, LOGIN_WINDOW_MS);
         if (!rate.allowed) {
-          console.warn(`[AUTH] Login dibatasi untuk ${email} dari ${ip}, coba lagi ${rate.retryAfterSeconds}s.`);
+          console.warn(
+            `[AUTH] Login dibatasi untuk ${email} dari ${ip}, coba lagi ${rate.retryAfterSeconds}s.`
+          );
           await recordAuthFailure({ email, ip, reason: "RATE_LIMITED" });
           return null;
         }
@@ -108,9 +110,7 @@ export const authOptions: NextAuthOptions = {
           select: { role: true, status: true, tokenVersion: true, patientId: true, doctorId: true }
         });
         const stale =
-          !dbUser ||
-          dbUser.status !== "AKTIF" ||
-          dbUser.tokenVersion !== (token.tokenVersion ?? 0);
+          !dbUser || dbUser.status !== "AKTIF" || dbUser.tokenVersion !== (token.tokenVersion ?? 0);
 
         if (stale) {
           token.invalid = true;

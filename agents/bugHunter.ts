@@ -111,7 +111,8 @@ export async function scanCodebase(root: string = process.cwd()): Promise<Findin
       const line = lines[index];
       for (const rule of RULES) {
         if (!rule.pattern.test(line)) continue;
-        if (rule.category === "Endpoint tanpa auth" && content.includes("getServerSession")) continue;
+        if (rule.category === "Endpoint tanpa auth" && content.includes("getServerSession"))
+          continue;
         findings.push({
           severity: rule.severity,
           category: rule.category,
@@ -127,7 +128,10 @@ export async function scanCodebase(root: string = process.cwd()): Promise<Findin
 }
 
 /** Artefak read-only: tidak pernah menimpa file sumber di /fixes. */
-export async function writeFindingsArtifact(findings: Finding[], root = process.cwd()): Promise<string[]> {
+export async function writeFindingsArtifact(
+  findings: Finding[],
+  root = process.cwd()
+): Promise<string[]> {
   const dir = path.join(root, "fixes");
   await mkdir(dir, { recursive: true });
   const counts = {
@@ -161,7 +165,9 @@ export async function runBugHunter(): Promise<{
 }> {
   const startedAt = Date.now();
   const findings = await scanCodebase();
-  const critical = findings.filter((item) => item.severity === "P0" || item.severity === "P1").length;
+  const critical = findings.filter(
+    (item) => item.severity === "P0" || item.severity === "P1"
+  ).length;
   const artifact = await writeFindingsArtifact(findings);
 
   await writeAgentLog({

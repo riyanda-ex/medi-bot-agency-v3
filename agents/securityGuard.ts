@@ -84,22 +84,26 @@ export function redactPatientForRole(
     id: patient.id,
     name: patient.name,
     nik: privileged ? decryptField(patient.nikEncrypted) : patient.nikMasked,
-    phone: privileged ? decryptField(patient.phoneEncrypted) : maskPhone(decryptField(patient.phoneEncrypted)),
+    phone: privileged
+      ? decryptField(patient.phoneEncrypted)
+      : maskPhone(decryptField(patient.phoneEncrypted)),
     address: patient.address,
     distanceKm: patient.distanceKm
   };
 }
 
-export function redactRecordForRole<T extends { diagnosisIcd10: string | null; anamnesis: string | null }>(
-  record: T,
-  role: Role
-): T | Omit<T, "diagnosisIcd10" | "anamnesis"> {
+export function redactRecordForRole<
+  T extends { diagnosisIcd10: string | null; anamnesis: string | null }
+>(record: T, role: Role): T | Omit<T, "diagnosisIcd10" | "anamnesis"> {
   if (canViewDiagnosis(role)) return record;
   const { diagnosisIcd10: _diagnosis, anamnesis: _anamnesis, ...safe } = record;
   return safe;
 }
 
-export function maskNikForRole(patient: { nikEncrypted: string; nikMasked: string }, role: Role): string {
+export function maskNikForRole(
+  patient: { nikEncrypted: string; nikMasked: string },
+  role: Role
+): string {
   return hasPermission(role, "patient:read") || canViewDiagnosis(role)
     ? decryptField(patient.nikEncrypted)
     : maskNik(decryptField(patient.nikEncrypted));

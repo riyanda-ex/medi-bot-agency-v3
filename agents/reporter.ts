@@ -237,11 +237,18 @@ export async function sendReportEmail(
       to: recipient,
       subject: `Laporan harian MEDI-BOT AGENCY v3`,
       text: "Terlampir laporan harian klinik.",
-      attachments: attachments.map((filePath) => ({ filename: path.basename(filePath), path: filePath }))
+      attachments: attachments.map((filePath) => ({
+        filename: path.basename(filePath),
+        path: filePath
+      }))
     });
     return { sent: true, simulated: false, detail: `Email terkirim ke ${recipient}.` };
   } catch (error) {
-    return { sent: false, simulated: false, detail: `Gagal kirim email: ${(error as Error).message}` };
+    return {
+      sent: false,
+      simulated: false,
+      detail: `Gagal kirim email: ${(error as Error).message}`
+    };
   }
 }
 

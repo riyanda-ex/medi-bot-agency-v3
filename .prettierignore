@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+build
+coverage
+reports
+prisma/dev.db
+prisma/*.db
+prisma/schema.postgres.prisma
+package-lock.json
+tsconfig.tsbuildinfo
+*.min.js

@@ -12,6 +12,7 @@ prisma/*.db
 prisma/schema.postgres.prisma
 coverage/
 .vitest/
+coverage-*.json
 reports/
 fixes/findings.json
 *.tsbuildinfo

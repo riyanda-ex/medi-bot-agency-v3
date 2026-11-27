@@ -127,7 +127,11 @@ export async function verifyApproval(
     where: { id: record.approverId },
     select: { role: true, status: true }
   });
-  if (!approver || approver.status !== "AKTIF" || !hasPermission(normalizeRole(approver.role), "outbound:approve")) {
+  if (
+    !approver ||
+    approver.status !== "AKTIF" ||
+    !hasPermission(normalizeRole(approver.role), "outbound:approve")
+  ) {
     return { ok: false, reason: "Penyetuju tidak berwenang atau sudah dinonaktifkan." };
   }
 

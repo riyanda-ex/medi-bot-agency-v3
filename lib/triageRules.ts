@@ -137,7 +137,9 @@ export function evaluateTriage(input: TriageInput, now: Date = new Date()): Tria
     (field) => field.label
   );
   const dataComplete = missingFields.length === 0;
-  const score = Math.round(((CORE_FIELDS.length - missingFields.length) / CORE_FIELDS.length) * 100);
+  const score = Math.round(
+    ((CORE_FIELDS.length - missingFields.length) / CORE_FIELDS.length) * 100
+  );
 
   const level: TriageLevel =
     redReasons.length > 0 ? "MERAH" : yellowReasons.length > 0 ? "KUNING" : "HIJAU";

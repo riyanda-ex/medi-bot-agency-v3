@@ -58,18 +58,15 @@ export async function callPatient(to: string, spokenMessage: string): Promise<Ou
   try {
     const twiml = `<Response><Say language="id-ID">${escapeXml(spokenMessage)}</Say></Response>`;
     const body = new URLSearchParams({ To: target, From: from, Twiml: twiml });
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body,
-        signal: AbortSignal.timeout(10_000)
-      }
-    );
+    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body,
+      signal: AbortSignal.timeout(10_000)
+    });
     const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) {
       return {

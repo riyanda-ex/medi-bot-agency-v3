@@ -13,11 +13,20 @@ export async function GET(request: Request): Promise<NextResponse> {
   const patientId = session?.user.patientId;
 
   if (!hasPermission(role, "own:read") || !patientId || session?.user.invalid) {
-    await auditApiAccess({ request, session, action: "OWN_DATA_DENIED", detail: `Peran ${role} mencoba mengakses data diri.` });
+    await auditApiAccess({
+      request,
+      session,
+      action: "OWN_DATA_DENIED",
+      detail: `Peran ${role} mencoba mengakses data diri.`
+    });
     return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
   }
 
-  const limited = enforceRateLimit(`me:${session?.user.id ?? getClientIp(request)}`, 60, 60_000);
+  const limited = await enforceRateLimit(
+    `me:${session?.user.id ?? getClientIp(request)}`,
+    60,
+    60_000
+  );
   if (limited) return limited;
 
   const patient = await prisma.patient.findUnique({

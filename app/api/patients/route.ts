@@ -10,12 +10,24 @@ export async function GET(request: Request): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
   const role = session?.user.role ?? "TIDAK_AKTIF";
 
-  if ((!hasPermission(role, "patient:read") && !hasPermission(role, "triage:write")) || session?.user.invalid) {
-    await auditApiAccess({ request, session, action: "PATIENTS_LIST_DENIED", detail: `Peran ${role} mencoba membaca daftar pasien.` });
+  if (
+    (!hasPermission(role, "patient:read") && !hasPermission(role, "triage:write")) ||
+    session?.user.invalid
+  ) {
+    await auditApiAccess({
+      request,
+      session,
+      action: "PATIENTS_LIST_DENIED",
+      detail: `Peran ${role} mencoba membaca daftar pasien.`
+    });
     return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
   }
 
-  const limited = enforceRateLimit(`patients:${session?.user.id ?? getClientIp(request)}`, 120, 60_000);
+  const limited = await enforceRateLimit(
+    `patients:${session?.user.id ?? getClientIp(request)}`,
+    120,
+    60_000
+  );
   if (limited) return limited;
 
   const patients = await prisma.patient.findMany({

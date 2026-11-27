@@ -96,7 +96,8 @@ function jobContext(options: {
 async function scheduleFollowUpJobs(options: RunOptions): Promise<StageResult[]> {
   const scheduled: StageResult[] = [];
   const stages = URGENT_SCHEDULE.filter(
-    (stage) => stage.channel === "WHATSAPP" || stage.channel === "CALL" || stage.channel === "ESCALATION"
+    (stage) =>
+      stage.channel === "WHATSAPP" || stage.channel === "CALL" || stage.channel === "ESCALATION"
   );
 
   for (const stage of stages) {
@@ -114,7 +115,11 @@ async function scheduleFollowUpJobs(options: RunOptions): Promise<StageResult[]>
       },
       {
         delayMs: stageOffset * 1000,
-        jobId: buildUrgentJobId("urgent", options.triageLogId ?? "", jobContext({ ...options, stageOffset }))
+        jobId: buildUrgentJobId(
+          "urgent",
+          options.triageLogId ?? "",
+          jobContext({ ...options, stageOffset })
+        )
       }
     );
     scheduled.push({
@@ -353,7 +358,12 @@ export async function executeUrgentFollowUp(options: FollowUpOptions): Promise<S
         channel: stage.channel === "ESCALATION" ? "ESCALATION" : stage.channel,
         attempt: stage.offsetSeconds === 300 ? 2 : 1,
         status,
-        provider: stage.channel === "WHATSAPP" ? "whatsapp" : stage.channel === "CALL" ? "phone" : "internal",
+        provider:
+          stage.channel === "WHATSAPP"
+            ? "whatsapp"
+            : stage.channel === "CALL"
+              ? "phone"
+              : "internal",
         simulated: !mayRunReal,
         message: stage.channel === "WHATSAPP" ? message : stage.detail,
         triggeredBy: options.actorId ?? "SYSTEM",

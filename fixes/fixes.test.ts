@@ -7,7 +7,9 @@ describe("Fix files dari Bug Hunter", () => {
   it("safeLog tidak membocorkan NIK", () => {
     const spy = console.info;
     let captured = "";
-    console.info = (value: string) => { captured = value; };
+    console.info = (value: string) => {
+      captured = value;
+    };
     safeLog("info", "NIK 3501010101010001");
     console.info = spy;
     expect(captured).not.toContain("3501010101010001");
@@ -21,10 +23,12 @@ describe("Fix files dari Bug Hunter", () => {
   });
 
   it("env-loader menolak kunci pendek", () => {
-    expect(() => loadEnv({
-      DATABASE_URL: "file:./dev.db",
-      NEXTAUTH_SECRET: "short",
-      FIELD_ENCRYPTION_KEY: "short"
-    })).toThrow();
+    expect(() =>
+      loadEnv({
+        DATABASE_URL: "file:./dev.db",
+        NEXTAUTH_SECRET: "short",
+        FIELD_ENCRYPTION_KEY: "short"
+      })
+    ).toThrow();
   });
 });

@@ -6,8 +6,12 @@ export function getClientIp(request: Request): string {
   return getRequestIp(request);
 }
 
-export function enforceRateLimit(key: string, limit: number, windowMs: number): NextResponse | null {
-  const result = checkRateLimit(key, limit, windowMs);
+export async function enforceRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<NextResponse | null> {
+  const result = await checkRateLimit(key, limit, windowMs);
   if (result.allowed) return null;
   return rateLimitResponse(result) as NextResponse;
 }

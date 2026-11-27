@@ -6,9 +6,7 @@ export const metadata: Metadata = {
   description: "Sistem multi-agent untuk rekam medis klinik Indonesia"
 };
 
-export default function RootLayout({
-  children
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id">
       <body>{children}</body>

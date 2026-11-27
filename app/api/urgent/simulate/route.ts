@@ -26,15 +26,25 @@ export async function POST(request: Request): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
   const role = session?.user.role ?? "TIDAK_AKTIF";
 
-  if ((!hasPermission(role, "triage:write") && !hasPermission(role, "agent:run")) || session?.user.invalid) {
-    await auditApiAccess({ request, session, action: "URGENT_SIMULATE_DENIED", detail: `Peran ${role} mencoba simulasi panggilan urgent.` });
+  if (
+    (!hasPermission(role, "triage:write") && !hasPermission(role, "agent:run")) ||
+    session?.user.invalid
+  ) {
+    await auditApiAccess({
+      request,
+      session,
+      action: "URGENT_SIMULATE_DENIED",
+      detail: `Peran ${role} mencoba simulasi panggilan urgent.`
+    });
     return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
   }
 
-  const limited = enforceRateLimit(`urgent-sim:${session?.user.id ?? getClientIp(request)}`, 20, 60_000);
+  const limited = await enforceRateLimit(
+    `urgent-sim:${session?.user.id ?? getClientIp(request)}`,
+    20,
+    60_000
+  );
   if (limited) return limited;
-
-
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -53,11 +63,17 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
     if (!log) return NextResponse.json({ error: "Triage log tidak ditemukan." }, { status: 404 });
     if (patientId && patientId !== log.patientId) {
-      return NextResponse.json({ error: "patientId tidak cocok dengan triageLogId." }, { status: 400 });
+      return NextResponse.json(
+        { error: "patientId tidak cocok dengan triageLogId." },
+        { status: 400 }
+      );
     }
     patientId = log.patientId;
     if (parsed.data.visitId && log.visitId && parsed.data.visitId !== log.visitId) {
-      return NextResponse.json({ error: "visitId tidak cocok dengan triageLogId." }, { status: 400 });
+      return NextResponse.json(
+        { error: "visitId tidak cocok dengan triageLogId." },
+        { status: 400 }
+      );
     }
   }
   if (parsed.data.visitId) {
@@ -72,7 +88,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     patientId = visit.patientId;
   }
   if (!patientId) {
-    return NextResponse.json({ error: "Pasien tidak ditemukan dari ID yang diberikan." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Pasien tidak ditemukan dari ID yang diberikan." },
+      { status: 404 }
+    );
   }
 
   const context = {
@@ -103,7 +122,14 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   if (queued.mode === "redis") {
     return NextResponse.json(
-      { patientId, queued: true, jobId: queued.jobId, stages: [], totalLogs: 0, detail: queued.detail },
+      {
+        patientId,
+        queued: true,
+        jobId: queued.jobId,
+        stages: [],
+        totalLogs: 0,
+        detail: queued.detail
+      },
       { status: 202 }
     );
   }

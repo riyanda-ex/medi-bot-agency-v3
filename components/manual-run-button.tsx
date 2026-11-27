@@ -32,7 +32,9 @@ export function ManualRunButton() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold">Manual Run Orchestrator</h2>
-          <p className="text-sm text-muted-foreground">Menjalankan seluruh agent dengan retry 3x.</p>
+          <p className="text-sm text-muted-foreground">
+            Menjalankan seluruh agent dengan retry 3x.
+          </p>
         </div>
         <Button onClick={run} disabled={loading} variant="outline">
           {loading ? "Berjalan..." : "Jalankan Sekarang"}

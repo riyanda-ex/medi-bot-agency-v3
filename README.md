@@ -53,16 +53,16 @@ Implemented controls:
 
 ## Tech Stack
 
-| Area | Technology |
-|---|---|
-| Framework | Next.js 16.4.6 (App Router), React 19 |
-| Language | TypeScript (strict) |
-| Styling/UI | Tailwind CSS, shadcn/ui pattern, Radix primitives |
-| Data | Prisma, SQLite (dev default), PostgreSQL (production) |
-| Auth | NextAuth Credentials/JWT |
-| Queue | Sync mode default; BullMQ + Redis optional |
-| Testing | Vitest, E2E script, queue check script |
-| CI | GitHub Actions (Windows verify, PostgreSQL/Redis E2E, BullMQ worker) |
+| Area       | Technology                                                           |
+| ---------- | -------------------------------------------------------------------- |
+| Framework  | Next.js 16.4.6 (App Router), React 19                                |
+| Language   | TypeScript (strict)                                                  |
+| Styling/UI | Tailwind CSS, shadcn/ui pattern, Radix primitives                    |
+| Data       | Prisma, SQLite (dev default), PostgreSQL (production)                |
+| Auth       | NextAuth Credentials/JWT                                             |
+| Queue      | Sync mode default; BullMQ + Redis optional                           |
+| Testing    | Vitest, E2E script, queue check script                               |
+| CI         | GitHub Actions (Windows verify, PostgreSQL/Redis E2E, BullMQ worker) |
 
 ## Quick Start
 
@@ -87,31 +87,31 @@ Open `http://localhost:3000`.
 
 > For local development only. Login form does not auto-fill credentials. Production seeding is blocked unless `ALLOW_SEED=true` with a strong `SEED_PASSWORD`.
 
-| Role | Email | Password | Diagnosis Access |
-|---|---|---|---|
-| DOKTER | `dokter@klinik.example` | `password123` | Yes |
-| PERAWAT | `perawat@klinik.example` | `password123` | Triage only |
-| RESEPSIONIS | `resepsionis@klinik.example` | `password123` | No |
-| ADMIN | `admin@klinik.example` | `password123` | Yes |
-| PASIEN | `pasien@klinik.example` | `password123` | Own data |
+| Role        | Email                        | Password      | Diagnosis Access |
+| ----------- | ---------------------------- | ------------- | ---------------- |
+| DOKTER      | `dokter@klinik.example`      | `password123` | Yes              |
+| PERAWAT     | `perawat@klinik.example`     | `password123` | Triage only      |
+| RESEPSIONIS | `resepsionis@klinik.example` | `password123` | No               |
+| ADMIN       | `admin@klinik.example`       | `password123` | Yes              |
+| PASIEN      | `pasien@klinik.example`      | `password123` | Own data         |
 
 ## Available Scripts
 
-| Command | Description |
-|---|---|
-| `npm run dev` | Start Next.js development server. |
-| `npm run build` | Create production build. |
-| `npm run start` | Start production server. |
-| `npm run typecheck` | Run TypeScript checks. |
-| `npm test` | Run Vitest suite. |
-| `npm run db:setup` | Generate Prisma client, push SQLite schema, seed dev data. |
-| `npm run db:studio` | Open Prisma Studio. |
-| `npm run prisma:generate:pg` | Generate PostgreSQL Prisma schema/client. |
-| `npm run db:setup:pg` | Push + seed PostgreSQL (requires `DATABASE_URL`). |
-| `npm run queue:worker` | Run BullMQ worker (requires `QUEUE_MODE=redis`). |
-| `npm run verify:agents` | Smoke-test agents and DB. |
-| `npm run e2e` | Run HTTP E2E checks against running server. |
-| `npm run queue:check` | Verify Redis queue returns 202 + `jobId`. |
+| Command                      | Description                                                |
+| ---------------------------- | ---------------------------------------------------------- |
+| `npm run dev`                | Start Next.js development server.                          |
+| `npm run build`              | Create production build.                                   |
+| `npm run start`              | Start production server.                                   |
+| `npm run typecheck`          | Run TypeScript checks.                                     |
+| `npm test`                   | Run Vitest suite.                                          |
+| `npm run db:setup`           | Generate Prisma client, push SQLite schema, seed dev data. |
+| `npm run db:studio`          | Open Prisma Studio.                                        |
+| `npm run prisma:generate:pg` | Generate PostgreSQL Prisma schema/client.                  |
+| `npm run db:setup:pg`        | Push + seed PostgreSQL (requires `DATABASE_URL`).          |
+| `npm run queue:worker`       | Run BullMQ worker (requires `QUEUE_MODE=redis`).           |
+| `npm run verify:agents`      | Smoke-test agents and DB.                                  |
+| `npm run e2e`                | Run HTTP E2E checks against running server.                |
+| `npm run queue:check`        | Verify Redis queue returns 202 + `jobId`.                  |
 
 ## Project Structure
 
@@ -134,16 +134,16 @@ docs/        Architecture, API, structure, production checklist
 
 Copy `.env.example` to `.env`. Key variables:
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `WHATSAPP_PROVIDER` | `mock` | `mock`, `fonnte`, `wablas` |
-| `PHONE_PROVIDER` | `mock` | `mock`, `twilio` |
-| `ALLOW_REAL_OUTBOUND` | `false` | Enables real outbound providers only with approval gates. |
-| `REQUIRE_HUMAN_APPROVAL` | `true` | Required for real outbound; forced in production. |
-| `QUEUE_MODE` | `sync` | `sync` or `redis`. |
-| `REDIS_URL` | - | Required for Redis queue mode. |
-| `TRUST_PROXY` | empty | Trusted proxy IPs for forwarded client IP. |
-| `SYNC_MODE` | `true` (dev) | Must be `false` in production. |
+| Variable                 | Default      | Purpose                                                   |
+| ------------------------ | ------------ | --------------------------------------------------------- |
+| `WHATSAPP_PROVIDER`      | `mock`       | `mock`, `fonnte`, `wablas`                                |
+| `PHONE_PROVIDER`         | `mock`       | `mock`, `twilio`                                          |
+| `ALLOW_REAL_OUTBOUND`    | `false`      | Enables real outbound providers only with approval gates. |
+| `REQUIRE_HUMAN_APPROVAL` | `true`       | Required for real outbound; forced in production.         |
+| `QUEUE_MODE`             | `sync`       | `sync` or `redis`.                                        |
+| `REDIS_URL`              | -            | Required for Redis queue mode.                            |
+| `TRUST_PROXY`            | empty        | Trusted proxy IPs for forwarded client IP.                |
+| `SYNC_MODE`              | `true` (dev) | Must be `false` in production.                            |
 
 See `.env.example` for the full list.
 

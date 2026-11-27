@@ -19,11 +19,21 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
   const { id } = await context.params;
 
   if (!hasPermission(role, "patient:read") || session?.user.invalid) {
-    await auditApiAccess({ request, session, action: "RECORD_DENIED", targetPatientId: id, detail: `Peran ${role} mencoba membaca rekam medis.` });
+    await auditApiAccess({
+      request,
+      session,
+      action: "RECORD_DENIED",
+      targetPatientId: id,
+      detail: `Peran ${role} mencoba membaca rekam medis.`
+    });
     return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
   }
 
-  const limited = enforceRateLimit(`record:${session?.user.id ?? getClientIp(request)}`, 120, 60_000);
+  const limited = await enforceRateLimit(
+    `record:${session?.user.id ?? getClientIp(request)}`,
+    120,
+    60_000
+  );
   if (limited) return limited;
 
   const records = await prisma.medicalRecord.findMany({
@@ -60,8 +70,8 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
   return NextResponse.json({
     patientId: id,
     canViewDiagnosis: canViewDiagnosis(role),
-    diagnosis: canViewDiagnosis(role) ? latestVisit?.diagnosis ?? null : null,
-    icd10: canViewDiagnosis(role) ? latestVisit?.icd10 ?? null : null,
+    diagnosis: canViewDiagnosis(role) ? (latestVisit?.diagnosis ?? null) : null,
+    icd10: canViewDiagnosis(role) ? (latestVisit?.icd10 ?? null) : null,
     records: visible
   });
 }

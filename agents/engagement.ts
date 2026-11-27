@@ -10,8 +10,7 @@ import { writeAgentLog } from "@/lib/agentLog";
 import { isOutboundAllowed, sendWhatsApp } from "@/lib/whatsapp";
 
 const EDUCATION_KEYWORDS = ["obat", "kontrol", "antrian", "dokter", "jadwal", "edukasi"];
-const FALLBACK_REPLY =
-  "Untuk pertanyaan medis detail, silakan hubungi klinik.";
+const FALLBACK_REPLY = "Untuk pertanyaan medis detail, silakan hubungi klinik.";
 
 export function chatbotReply(message: string): string {
   const text = message.toLowerCase();
@@ -30,7 +29,10 @@ export function chatbotReply(message: string): string {
   if (text.includes("kontrol")) {
     return "Pengingat kontrol dikirim 3 hari dan 1 hari sebelum jadwal. Mohon konfirmasi kehadiran.";
   }
-  return "Edukasi singkat: jaga pola makan, istirahat cukup, dan lanjutkan kontrol rutin. " + FALLBACK_REPLY;
+  return (
+    "Edukasi singkat: jaga pola makan, istirahat cukup, dan lanjutkan kontrol rutin. " +
+    FALLBACK_REPLY
+  );
 }
 
 function wibTime(day: Date, hour: number, minute = 0): Date {

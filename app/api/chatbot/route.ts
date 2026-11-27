@@ -17,16 +17,28 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const session = await getServerSession(authOptions);
   if (!session?.user?.id || session.user.invalid) {
-    await auditApiAccess({ request, session, action: "CHATBOT_DENIED", detail: "Akses tanpa sesi." });
+    await auditApiAccess({
+      request,
+      session,
+      action: "CHATBOT_DENIED",
+      detail: "Akses tanpa sesi."
+    });
     return NextResponse.json({ error: "Autentikasi diperlukan." }, { status: 401 });
   }
 
-  const limited = enforceRateLimit(`chatbot:${session.user.id}:${getClientIp(request)}`, 20, 60_000);
+  const limited = await enforceRateLimit(
+    `chatbot:${session.user.id}:${getClientIp(request)}`,
+    20,
+    60_000
+  );
   if (limited) return limited;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Pesan tidak valid (maksimal 500 karakter)." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Pesan tidak valid (maksimal 500 karakter)." },
+      { status: 400 }
+    );
   }
 
   const reply = chatbotReply(parsed.data.message);

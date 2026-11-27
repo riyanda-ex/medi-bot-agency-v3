@@ -8,7 +8,11 @@ export default async function AuditPage() {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
   if (!canAccessAudit(session.user.role)) {
-    return <main className="p-8"><h1 className="text-2xl font-semibold">Akses ditolak</h1></main>;
+    return (
+      <main className="p-8">
+        <h1 className="text-2xl font-semibold">Akses ditolak</h1>
+      </main>
+    );
   }
 
   const logs = await prisma.auditLog.findMany({
@@ -20,10 +24,19 @@ export default async function AuditPage() {
   return (
     <main className="mx-auto max-w-6xl p-8">
       <h1 className="text-2xl font-semibold">Audit Log</h1>
-      <p className="text-sm text-muted-foreground">Siapa, kapan, akses siapa, dan alamat IP (retensi 1 tahun).</p>
+      <p className="text-sm text-muted-foreground">
+        Siapa, kapan, akses siapa, dan alamat IP (retensi 1 tahun).
+      </p>
       <table className="mt-4 w-full text-left text-sm">
         <thead className="text-muted-foreground">
-          <tr><th className="pb-2">Waktu</th><th>Aktor</th><th>Peran</th><th>Aksi</th><th>Target</th><th>IP</th></tr>
+          <tr>
+            <th className="pb-2">Waktu</th>
+            <th>Aktor</th>
+            <th>Peran</th>
+            <th>Aksi</th>
+            <th>Target</th>
+            <th>IP</th>
+          </tr>
         </thead>
         <tbody>
           {logs.map((log) => (

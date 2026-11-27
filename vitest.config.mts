@@ -11,6 +11,19 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts", "fixes/**/*.test.ts"]
+    include: ["tests/**/*.test.ts", "fixes/**/*.test.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html", "lcov"],
+      reportsDirectory: "coverage",
+      include: ["lib/**/*.ts", "agents/**/*.ts"],
+      exclude: ["**/*.d.ts", "**/*.test.ts"],
+      thresholds: {
+        lines: 20,
+        functions: 20,
+        statements: 20,
+        branches: 15
+      }
+    }
   }
 });

@@ -11,7 +11,10 @@ import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestG
 const bodySchema = z.object({
   scope: z.enum(["URGENT", "REPORT"]),
   resourceId: z.string().min(1),
-  channels: z.array(z.enum(["WHATSAPP", "CALL", "EMAIL", "ESCALATION"])).min(1).max(4)
+  channels: z
+    .array(z.enum(["WHATSAPP", "CALL", "EMAIL", "ESCALATION"]))
+    .min(1)
+    .max(4)
 });
 
 /** Approval nyata: hanya DOKTER/ADMIN, tercatat di audit, berlaku 30 menit. */
@@ -23,11 +26,23 @@ export async function POST(request: Request): Promise<NextResponse> {
   const role = session?.user.role ?? "TIDAK_AKTIF";
 
   if (!canApproveOutbound(role) || session?.user.invalid) {
-    await auditApiAccess({ request, session, action: "OUTBOUND_APPROVAL_DENIED", detail: `Peran ${role} mencoba memberikan approval outbound.` });
-    return NextResponse.json({ error: "Akses ditolak: approval hanya untuk DOKTER/ADMIN." }, { status: 403 });
+    await auditApiAccess({
+      request,
+      session,
+      action: "OUTBOUND_APPROVAL_DENIED",
+      detail: `Peran ${role} mencoba memberikan approval outbound.`
+    });
+    return NextResponse.json(
+      { error: "Akses ditolak: approval hanya untuk DOKTER/ADMIN." },
+      { status: 403 }
+    );
   }
 
-  const limited = enforceRateLimit(`approve:${session?.user.id ?? getClientIp(request)}`, 30, 60_000);
+  const limited = await enforceRateLimit(
+    `approve:${session?.user.id ?? getClientIp(request)}`,
+    30,
+    60_000
+  );
   if (limited) return limited;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
@@ -42,7 +57,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   };
 
   if (scope === "URGENT") {
-    const log = await prisma.triageLog.findUnique({ where: { id: resourceId }, select: { id: true } });
+    const log = await prisma.triageLog.findUnique({
+      where: { id: resourceId },
+      select: { id: true }
+    });
     if (!log) return NextResponse.json({ error: "Triage log tidak ditemukan." }, { status: 404 });
   }
 

@@ -66,14 +66,14 @@ Ciri teknis yang dapat dijadikan dasar klaim:
 
 ## 4. Masalah teknis yang diselesaikan
 
-| Masalah | Solusi teknis dalam kode |
-|---|---|
-| Inkonsistensi keputusan triage antar operator | Aturan deterministik di `lib/triageRules.ts` |
-| Kebocoran diagnosa lewat notifikasi | Template statis di `agents/urgentCaller.ts`, tanpa field diagnosa |
-| Eskalasi terlewat saat banyak instance | Antrean persisten + `jobId` dedup di `lib/queue.ts` |
-| Pengiriman otomatis tanpa persetujuan | Guard `ALLOW_REAL_OUTBOUND` + `REQUIRE_HUMAN_APPROVAL` |
-| Akses resepsionis terhadap diagnosa | RBAC di `lib/rbac.ts` + redaksi di `agents/securityGuard.ts` |
-| Sulitnya audit insiden | `lib/audit.ts` menulis aktor/IP/target untuk tiap endpoint |
+| Masalah                                       | Solusi teknis dalam kode                                          |
+| --------------------------------------------- | ----------------------------------------------------------------- |
+| Inkonsistensi keputusan triage antar operator | Aturan deterministik di `lib/triageRules.ts`                      |
+| Kebocoran diagnosa lewat notifikasi           | Template statis di `agents/urgentCaller.ts`, tanpa field diagnosa |
+| Eskalasi terlewat saat banyak instance        | Antrean persisten + `jobId` dedup di `lib/queue.ts`               |
+| Pengiriman otomatis tanpa persetujuan         | Guard `ALLOW_REAL_OUTBOUND` + `REQUIRE_HUMAN_APPROVAL`            |
+| Akses resepsionis terhadap diagnosa           | RBAC di `lib/rbac.ts` + redaksi di `agents/securityGuard.ts`      |
+| Sulitnya audit insiden                        | `lib/audit.ts` menulis aktor/IP/target untuk tiap endpoint        |
 
 ---
 
@@ -162,14 +162,14 @@ Repo ini sudah private dan memiliki audit trail, yang mendukung strategi tersebu
 
 ## 9. Status saat ini
 
-| Item | Status |
-|---|---|
-| Lisensi komersial proprietary v3.1 (All Rights Reserved) | ✅ `LICENSE` |
-| Draft invensi | ✅ `PATENT.md` |
-| Draf klaim | ✅ bagian 5 |
-| Permohonan DGIP | ❌ Belum dilakukan |
-| Nomor paten | ❌ Belum ada |
-| Hak eksklusif yang dapat dieksekusi | ❌ Belum ada sebelum paten diberikan |
+| Item                                                     | Status                               |
+| -------------------------------------------------------- | ------------------------------------ |
+| Lisensi komersial proprietary v3.1 (All Rights Reserved) | ✅ `LICENSE`                         |
+| Draft invensi                                            | ✅ `PATENT.md`                       |
+| Draf klaim                                               | ✅ bagian 5                          |
+| Permohonan DGIP                                          | ❌ Belum dilakukan                   |
+| Nomor paten                                              | ❌ Belum ada                         |
+| Hak eksklusif yang dapat dieksekusi                      | ❌ Belum ada sebelum paten diberikan |
 
 ---
 

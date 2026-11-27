@@ -10,22 +10,24 @@
 
 ## 2. Peta agent
 
-| Agent | File | Fungsi utama |
-|---|---|---|
-| RME Analyzer | `agents/analyzer.ts` | 13 field wajib, skor kelengkapan, kontraindikasi |
-| Orchestrator | `agents/orchestrator.ts` | cron WIB, cek MERAH 5 menit, retry 3x, agent logs |
-| Bug Hunter | `agents/bugHunter.ts` | scan P0–P3, artefak read-only di `fixes/` |
-| Auto Reporter | `agents/reporter.ts` | PDF, Excel + grafik 7 hari, email mock/approval |
-| Urgent Triage + Auto Caller | `agents/urgentCaller.ts` | 0/5/10 detik, 2/5/15 menit, WA/telepon/eskalasi |
-| Security Guard | `agents/securityGuard.ts` | enkripsi, masking, RBAC, audit bertanda tangan |
-| Patient Engagement | `agents/engagement.ts` | obat, kontrol H-3/H-1, chatbot, waiting list, no-show |
+| Agent                       | File                      | Fungsi utama                                          |
+| --------------------------- | ------------------------- | ----------------------------------------------------- |
+| RME Analyzer                | `agents/analyzer.ts`      | 13 field wajib, skor kelengkapan, kontraindikasi      |
+| Orchestrator                | `agents/orchestrator.ts`  | cron WIB, cek MERAH 5 menit, retry 3x, agent logs     |
+| Bug Hunter                  | `agents/bugHunter.ts`     | scan P0–P3, artefak read-only di `fixes/`             |
+| Auto Reporter               | `agents/reporter.ts`      | PDF, Excel + grafik 7 hari, email mock/approval       |
+| Urgent Triage + Auto Caller | `agents/urgentCaller.ts`  | 0/5/10 detik, 2/5/15 menit, WA/telepon/eskalasi       |
+| Security Guard              | `agents/securityGuard.ts` | enkripsi, masking, RBAC, audit bertanda tangan        |
+| Patient Engagement          | `agents/engagement.ts`    | obat, kontrol H-3/H-1, chatbot, waiting list, no-show |
 
 ## 3. Urutan kerja
 
 ### Langkah 0 — PLAN.md
+
 - [x] Rencana, prinsip keamanan, peta agent, dan Definition of Done.
 
 ### Langkah 1 — Struktur project + Prisma + Auth + seed
+
 - [x] Next.js 16.4.6 App Router + TypeScript + Tailwind + pola shadcn/ui.
 - [x] `prisma/schema.prisma` dengan **17 model** (SQLite default) + generator PostgreSQL.
 - [x] NextAuth Credentials + JWT, revalidasi database tiap request, `proxy.ts` proteksi route.
@@ -34,6 +36,7 @@
 - [x] `.env.example` tanpa kunci asli; seed produksi diblokir tanpa `ALLOW_SEED=true`.
 
 ### Langkah 2 — Agent 5 + triageRules + tes (PRIORITAS)
+
 - [x] `lib/triageRules.ts` — semua ambang MERAH/KUNING/HIJAU + alasan berbahasa Indonesia.
 - [x] `tests/triage.test.ts` — 10 tes sesuai DoD.
 - [x] `agents/urgentCaller.ts` — workflow 0/5/10 detik, 2/5/15 menit.
@@ -42,11 +45,13 @@
 - [x] Endpoint + tombol "Simulasi Panggilan Urgent" menyimpan ke `urgent_calls`.
 
 ### Langkah 3 — Dashboard + Triage
+
 - [x] Dashboard menghitung pasien unik per level MERAH/KUNING/HIJAU.
 - [x] Triage 190/120 → MERAH < 5 detik (validasi Zod + evaluasi sinkron).
 - [x] DOKTER melihat teks diagnosis nyata; RESEPSIONIS tidak (dashboard + `/api/patients/[id]/record`).
 
 ### Langkah 4 — Agent 1, 4, 6, 7, 2, 3
+
 - [x] Analyzer (13 field wajib + skor + kontraindikasi alergi/kehamilan).
 - [x] Reporter (PDF, Excel + grafik batang 7 hari, email dengan approval).
 - [x] Security Guard (RBAC penuh, audit 1 tahun, masking, tanda tangan HMAC).
@@ -55,6 +60,7 @@
 - [x] Bug Hunter (scan P0–P3; tidak menimpa sumber di `/fixes`).
 
 ### Langkah 5 — Test end-to-end + README
+
 - [x] `npm install && npm run build` bersih di Windows PowerShell.
 - [x] `npm test` 28/28 (10 triage + 3 helper + 15 hardening).
 - [x] `npm audit --audit-level=high` = 0 vulnerability.
@@ -66,15 +72,15 @@
 
 ## 4. Definition of Done (dari permintaan)
 
-| Kriteria | Status | Catatan |
-|---|---|---|
-| `npm install && npm run dev` jalan tanpa error di PowerShell | ✅ | Build produksi juga bersih |
-| Login DOKTER bisa lihat diagnosis, RESEPSIONIS tidak | ✅ | Teks diagnosis nyata diverifikasi via E2E |
-| Input TD 190/120 langsung MERAH < 5 detik | ✅ | Diukur dalam E2E |
-| Klik Simulasi Panggilan Urgent masuk ke log | ✅ | 4 baris `urgent_calls` per simulasi |
-| Laporan download PDF & Excel | ✅ | Laporan dibuat otomatis oleh E2E sebelum download |
-| `npm test` lolos 10/10 triage | ✅ | Total 28/28 dengan hardening |
-| Tidak ada API key asli di kode | ✅ | Hanya placeholder di `.env.example` |
+| Kriteria                                                     | Status | Catatan                                           |
+| ------------------------------------------------------------ | ------ | ------------------------------------------------- |
+| `npm install && npm run dev` jalan tanpa error di PowerShell | ✅     | Build produksi juga bersih                        |
+| Login DOKTER bisa lihat diagnosis, RESEPSIONIS tidak         | ✅     | Teks diagnosis nyata diverifikasi via E2E         |
+| Input TD 190/120 langsung MERAH < 5 detik                    | ✅     | Diukur dalam E2E                                  |
+| Klik Simulasi Panggilan Urgent masuk ke log                  | ✅     | 4 baris `urgent_calls` per simulasi               |
+| Laporan download PDF & Excel                                 | ✅     | Laporan dibuat otomatis oleh E2E sebelum download |
+| `npm test` lolos 10/10 triage                                | ✅     | Total 28/28 dengan hardening                      |
+| Tidak ada API key asli di kode                               | ✅     | Hanya placeholder di `.env.example`               |
 
 **Catatan keputusan:** spesifikasi awal meminta Next.js 14, tetapi audit keamanan 2026
 menandai versi lama sebagai kritis. Atas persetujuan Anda, repo memakai **Next.js 16.4.6 + React 19**

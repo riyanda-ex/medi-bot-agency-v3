@@ -127,14 +127,21 @@ export function verifyJobPayload<T>(envelope: unknown): T {
     throw new Error("Payload job tidak valid.");
   }
   const candidate = envelope as SignedJob<T>;
-  if (typeof candidate.signature !== "string" || !verifyPayloadSignature(JSON.stringify(candidate.data), candidate.signature)) {
+  if (
+    typeof candidate.signature !== "string" ||
+    !verifyPayloadSignature(JSON.stringify(candidate.data), candidate.signature)
+  ) {
     throw new Error("Tanda tangan job tidak valid; job ditolak.");
   }
   return candidate.data;
 }
 
 /** jobId deterministik turunan konteks agar job sah tidak bisa diracun lebih awal. */
-export function buildUrgentJobId(prefix: string, triageLogId: string, context: Record<string, unknown>): string {
+export function buildUrgentJobId(
+  prefix: string,
+  triageLogId: string,
+  context: Record<string, unknown>
+): string {
   const hash = signPayload(JSON.stringify({ triageLogId, ...context })).slice(0, 16);
   return `${prefix}-${triageLogId}-${hash}`;
 }
@@ -235,10 +242,7 @@ export async function startQueueWorker(handlers: QueueHandlers): Promise<Worker 
 export async function closeQueueConnections(worker?: Worker | null): Promise<void> {
   if (worker) {
     // Beri waktu pekerjaan berhenti rapi sebelum paksa tutup.
-    await Promise.race([
-      worker.close(),
-      new Promise<void>((resolve) => setTimeout(resolve, 5000))
-    ]);
+    await Promise.race([worker.close(), new Promise<void>((resolve) => setTimeout(resolve, 5000))]);
   }
   if (queue) {
     await queue.close();

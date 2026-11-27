@@ -32,7 +32,13 @@
     "db:push:pg": "prisma db push --schema prisma/schema.postgres.prisma",
     "db:setup:pg": "npm run prisma:generate:pg && npm run db:push:pg && npm run db:seed",
     "db:studio": "prisma studio --schema prisma/schema.prisma",
-    "postinstall": "prisma generate --schema prisma/schema.prisma"
+    "postinstall": "prisma generate --schema prisma/schema.prisma",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:coverage": "vitest run --coverage",
+    "openapi:check": "node scripts/check-openapi.mjs"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",
@@ -68,13 +74,22 @@
     "@types/pdfkit": "^0.17.7",
     "@types/react": "19.3.3",
     "@types/react-dom": "19.3.0",
+    "@vitest/coverage-v8": "^5.1.2",
     "autoprefixer": "10.4.20",
+    "eslint": "^10.15.0",
+    "eslint-config-next": "^16.4.6",
+    "eslint-config-prettier": "^10.1.8",
     "postcss": "8.5.33",
+    "prettier": "^3.10.1",
     "prisma": "5.22.0",
     "tailwindcss": "3.4.17",
     "tsx": "4.23.15",
     "typescript": "5.7.3",
     "vite": "8.4.0",
     "vitest": "5.1.2"
+  },
+  "engines": {
+    "node": ">=22",
+    "npm": ">=11"
   }
 }

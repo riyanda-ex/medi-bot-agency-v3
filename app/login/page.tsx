@@ -63,7 +63,8 @@ export default function LoginPage() {
           {loading ? "Memproses..." : "Masuk"}
         </Button>
         <p className="text-xs text-muted-foreground">
-          Akun uji untuk pengembangan tercantum di README. Jangan memakai kredensial uji di produksi.
+          Akun uji untuk pengembangan tercantum di README. Jangan memakai kredensial uji di
+          produksi.
         </p>
       </form>
     </main>

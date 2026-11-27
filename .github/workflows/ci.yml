@@ -36,10 +36,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run db:setup
+      - run: npm run lint
+      - run: npm run format:check
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test:coverage
+      - run: npm run openapi:check
       - run: npm run build
       - run: npm audit --audit-level=high
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-windows
+          path: coverage
 
   verify-services:
     name: Verifikasi PostgreSQL + Redis + E2E
@@ -60,7 +68,8 @@ jobs:
           --health-retries 10
       redis:
         image: redis:7-alpine
-        command: ["redis-server", "--appendonly", "yes", "--requirepass", "medibot_ci_redis_password"]
+        command:
+          ["redis-server", "--appendonly", "yes", "--requirepass", "medibot_ci_redis_password"]
         ports:
           - 6379:6379
         options: >-
@@ -119,7 +128,8 @@ jobs:
           --health-retries 10
       redis:
         image: redis:7-alpine
-        command: ["redis-server", "--appendonly", "yes", "--requirepass", "medibot_ci_redis_password"]
+        command:
+          ["redis-server", "--appendonly", "yes", "--requirepass", "medibot_ci_redis_password"]
         ports:
           - 6379:6379
         options: >-

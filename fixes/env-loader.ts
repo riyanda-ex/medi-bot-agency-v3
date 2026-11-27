@@ -16,7 +16,9 @@ export type ValidEnv = z.infer<typeof envSchema>;
 export function loadEnv(source: Record<string, string | undefined>): ValidEnv {
   const parsed = envSchema.safeParse(source);
   if (!parsed.success) {
-    throw new Error(`Environment tidak valid: ${parsed.error.issues.map((i) => i.path.join(".")).join(", ")}`);
+    throw new Error(
+      `Environment tidak valid: ${parsed.error.issues.map((i) => i.path.join(".")).join(", ")}`
+    );
   }
   return parsed.data;
 }

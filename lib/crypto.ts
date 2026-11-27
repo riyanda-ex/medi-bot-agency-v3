@@ -1,5 +1,17 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { isInsecureSecret, isPlaceholderSecret, isProductionRuntime, isProductionSecret } from "@/lib/env";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual
+} from "node:crypto";
+import {
+  isInsecureSecret,
+  isPlaceholderSecret,
+  isProductionRuntime,
+  isProductionSecret
+} from "@/lib/env";
 
 const ALGORITHM = "aes-256-gcm";
 const PREFIX = "v1";
@@ -105,10 +117,9 @@ export function decryptField(payload: string): string {
   const [, ivHex, tagHex, cipherHex] = parts;
   const decipher = createDecipheriv(ALGORITHM, encryptionKey(), Buffer.from(ivHex, "hex"));
   decipher.setAuthTag(Buffer.from(tagHex, "hex"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(cipherHex, "hex")),
-    decipher.final()
-  ]).toString("utf8");
+  return Buffer.concat([decipher.update(Buffer.from(cipherHex, "hex")), decipher.final()]).toString(
+    "utf8"
+  );
 }
 
 /** Hash deterministik untuk deteksi duplikat NIK tanpa menyimpan NIK plaintext. */

@@ -59,7 +59,8 @@ export function ApprovalPanel({
     <section className="rounded-lg border border-amber-300 bg-amber-50 p-4">
       <h2 className="font-semibold">Approval pengiriman nyata</h2>
       <p className="mt-1 text-sm text-amber-800">
-        Berikan approval hanya untuk tindakan yang Anda setujui. Berlaku 30 menit dan tercatat di audit.
+        Berikan approval hanya untuk tindakan yang Anda setujui. Berlaku 30 menit dan tercatat di
+        audit.
       </p>
       <form onSubmit={handleSubmit} className="mt-3 space-y-3 text-sm">
         <label className="block font-medium">

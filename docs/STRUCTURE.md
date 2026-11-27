@@ -4,19 +4,19 @@ This document describes the intended structure of MEDI-BOT AGENCY v3.
 
 ## Top-Level
 
-| Path | Purpose |
-|---|---|
-| `app/` | Next.js App Router UI and API routes. |
-| `agents/` | Domain/agent logic (analyzer, orchestrator, triage caller, reporter, etc.). |
-| `lib/` | Shared runtime infrastructure: auth, RBAC, env, crypto, audit, queue, guards. |
-| `components/` | Reusable UI components. |
-| `prisma/` | Prisma schema, migrations/DB push target, seed. |
-| `scripts/` | Operational scripts (worker, E2E, queue check, schema sync). |
-| `tests/` | Vitest tests. |
-| `fixes/` | Bug-hunter artifacts/helpers and their tests. |
-| `reports/` | Generated report outputs (gitignored). |
-| `docs/` | Project documentation. |
-| `.github/` | CI, Dependabot, CODEOWNERS, templates. |
+| Path          | Purpose                                                                       |
+| ------------- | ----------------------------------------------------------------------------- |
+| `app/`        | Next.js App Router UI and API routes.                                         |
+| `agents/`     | Domain/agent logic (analyzer, orchestrator, triage caller, reporter, etc.).   |
+| `lib/`        | Shared runtime infrastructure: auth, RBAC, env, crypto, audit, queue, guards. |
+| `components/` | Reusable UI components.                                                       |
+| `prisma/`     | Prisma schema, migrations/DB push target, seed.                               |
+| `scripts/`    | Operational scripts (worker, E2E, queue check, schema sync).                  |
+| `tests/`      | Vitest tests.                                                                 |
+| `fixes/`      | Bug-hunter artifacts/helpers and their tests.                                 |
+| `reports/`    | Generated report outputs (gitignored).                                        |
+| `docs/`       | Project documentation.                                                        |
+| `.github/`    | CI, Dependabot, CODEOWNERS, templates.                                        |
 
 ## Placement Rules
 

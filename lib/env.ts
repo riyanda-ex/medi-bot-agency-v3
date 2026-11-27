@@ -5,7 +5,14 @@
  * tidak gagal pada mesin pengembangan yang masih memakai kunci contoh.
  */
 
-const PLACEHOLDER_MARKERS = ["GANTI_", "GANTI ", "CHANGE_", "CHANGEME", "CI-ONLY", "PLACEHOLDER"] as const;
+const PLACEHOLDER_MARKERS = [
+  "GANTI_",
+  "GANTI ",
+  "CHANGE_",
+  "CHANGEME",
+  "CI-ONLY",
+  "PLACEHOLDER"
+] as const;
 // Nilai DEV-ONLY boleh dipakai di pengembangan agar data uji lama tetap bisa
 // didekripsi, tetapi harus ditolak di produksi.
 const INSECURE_MARKERS = [...PLACEHOLDER_MARKERS, "DEV-ONLY"] as const;
@@ -36,7 +43,9 @@ export function isProductionSecret(value: string | null | undefined, minimumByte
 
 /** Produksi nyata: NODE_ENV=production dan bukan fase build Next.js. */
 export function isProductionRuntime(): boolean {
-  return process.env.NODE_ENV === "production" && process.env.NEXT_PHASE !== "phase-production-build";
+  return (
+    process.env.NODE_ENV === "production" && process.env.NEXT_PHASE !== "phase-production-build"
+  );
 }
 
 /** Di produksi approval manusia tidak boleh dinonaktifkan lewat env. */

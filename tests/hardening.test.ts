@@ -6,12 +6,7 @@ import { normalizePhone, resolveWhatsAppProvider, sendWhatsApp } from "../lib/wh
 import { resolvePhoneProvider } from "../lib/phone";
 import { buildWhatsappMessage } from "../agents/urgentCaller";
 import { chatbotReply } from "../agents/engagement";
-import {
-  buildJobOptions,
-  isQueueEnabled,
-  signJobPayload,
-  verifyJobPayload
-} from "../lib/queue";
+import { buildJobOptions, isQueueEnabled, signJobPayload, verifyJobPayload } from "../lib/queue";
 import { isPlaceholderSecret, isStrongSecret } from "../lib/env";
 import { resolveReportPath } from "../lib/reportFiles";
 import { checkRateLimit } from "../lib/rateLimit";
@@ -111,7 +106,8 @@ describe("Hardening produksi - RBAC dan outbound", () => {
 
 describe("Hardening produksi - enkripsi, audit, dan antrean", () => {
   it("enkripsi NIK dan masking tetap berfungsi", async () => {
-    const { encryptField, decryptField, fieldHash, maskNik, maskPhone } = await import("../lib/crypto");
+    const { encryptField, decryptField, fieldHash, maskNik, maskPhone } =
+      await import("../lib/crypto");
     const nik = "3501010101010001";
     const encrypted = encryptField(nik);
 
@@ -162,7 +158,10 @@ describe("Hardening produksi - enkripsi, audit, dan antrean", () => {
     const envelope = signJobPayload({ patientId: "p1", simulate: true });
     expect(verifyJobPayload(envelope)).toEqual({ patientId: "p1", simulate: true });
     expect(() =>
-      verifyJobPayload({ data: { patientId: "p1", simulate: false }, signature: envelope.signature })
+      verifyJobPayload({
+        data: { patientId: "p1", simulate: false },
+        signature: envelope.signature
+      })
     ).toThrow(/Tanda tangan job tidak valid/);
   });
 
@@ -172,11 +171,11 @@ describe("Hardening produksi - enkripsi, audit, dan antrean", () => {
     expect(() => resolveReportPath(path.join(process.cwd(), ".env"))).toThrow(/di luar direktori/);
   });
 
-  it("rate limit login memblokir setelah batas tercapai", () => {
+  it("rate limit login memblokir setelah batas tercapai", async () => {
     const key = `test-login-${Date.now()}`;
     for (let index = 0; index < 8; index += 1) {
-      expect(checkRateLimit(key, 8, 60_000).allowed).toBe(true);
+      expect((await checkRateLimit(key, 8, 60_000)).allowed).toBe(true);
     }
-    expect(checkRateLimit(key, 8, 60_000).allowed).toBe(false);
+    expect((await checkRateLimit(key, 8, 60_000)).allowed).toBe(false);
   });
 });

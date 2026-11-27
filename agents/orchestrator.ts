@@ -61,7 +61,9 @@ async function withRetry(
     } catch (error) {
       lastError = (error as Error).message;
       if (attempt < RETRY_LIMIT) {
-        await new Promise((resolve) => setTimeout(resolve, process.env.SYNC_MODE === "true" ? 1 : 1000));
+        await new Promise((resolve) =>
+          setTimeout(resolve, process.env.SYNC_MODE === "true" ? 1 : 1000)
+        );
       }
     }
   }
@@ -125,14 +127,18 @@ export async function runAllAgents(): Promise<OrchestratorRun> {
   outcomes.push(await withRetry("SECURITY_GUARD", runSecurityGuard, runId));
   outcomes.push(await withRetry("PATIENT_ENGAGEMENT", runEngagement, runId));
   outcomes.push(await withRetry("BUG_HUNTER", () => runBugHunter(), runId));
-  outcomes.push(await withRetry("URGENT_CALLER", () => checkRedPatients(runId).then((r) => r.found), runId));
+  outcomes.push(
+    await withRetry("URGENT_CALLER", () => checkRedPatients(runId).then((r) => r.found), runId)
+  );
 
   const finishedAt = new Date().toISOString();
   await writeAgentLog({
     agentName: "ORCHESTRATOR",
     status: "SUCCESS",
     message: `Run ${runId} selesai: ${outcomes.filter((item) => item.status === "SUCCESS").length}/${outcomes.length} agent sukses`,
-    payload: JSON.stringify(outcomes.map(({ name, status, attempts }) => ({ name, status, attempts }))),
+    payload: JSON.stringify(
+      outcomes.map(({ name, status, attempts }) => ({ name, status, attempts }))
+    ),
     runId
   });
 

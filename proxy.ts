@@ -14,7 +14,10 @@ const SECURITY_HEADERS: Record<string, string> = {
 function withSecurityHeaders(response: NextResponse, request: NextRequest): NextResponse {
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) response.headers.set(key, value);
   if (request.nextUrl.protocol === "https:") {
-    response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+    response.headers.set(
+      "Strict-Transport-Security",
+      "max-age=63072000; includeSubDomains; preload"
+    );
   }
   return response;
 }
@@ -24,12 +27,18 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   if (!token || token.invalid === true) {
-    return withSecurityHeaders(NextResponse.redirect(new URL("/login?error=sesi", request.url)), request);
+    return withSecurityHeaders(
+      NextResponse.redirect(new URL("/login?error=sesi", request.url)),
+      request
+    );
   }
 
   const role = String(token.role ?? "TIDAK_AKTIF");
   if (pathname.startsWith("/audit") && role !== "ADMIN") {
-    return withSecurityHeaders(NextResponse.redirect(new URL("/dashboard?error=akses", request.url)), request);
+    return withSecurityHeaders(
+      NextResponse.redirect(new URL("/dashboard?error=akses", request.url)),
+      request
+    );
   }
 
   return withSecurityHeaders(NextResponse.next(), request);

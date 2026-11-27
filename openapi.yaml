@@ -1,0 +1,151 @@
+openapi: 3.1.0
+info:
+  title: MEDI-BOT AGENCY v3 API
+  version: 0.1.0
+  description: |
+    Internal API summary for MEDI-BOT AGENCY v3. This spec documents primary endpoints;
+    behavior is enforced by server-side auth, RBAC, rate limits, and approval gates.
+servers:
+  - url: http://localhost:3000
+security:
+  - cookieAuth: []
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    Health:
+      type: object
+      properties:
+        status: { type: string }
+        service: { type: string }
+        timestamp: { type: string, format: date-time }
+    Ready:
+      type: object
+      properties:
+        status: { type: string, enum: [ready, not_ready] }
+        timestamp: { type: string, format: date-time }
+        checks:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              ok: { type: boolean }
+              detail: { type: string }
+paths:
+  /api/health:
+    get:
+      summary: Liveness check
+      security: []
+      responses:
+        "200":
+          description: Service alive
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /api/ready:
+    get:
+      summary: Readiness check
+      security: []
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ready" }
+        "503":
+          description: Not ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ready" }
+  /api/chatbot:
+    post:
+      summary: Generic education chatbot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string, maxLength: 500 }
+      responses:
+        "200": { description: Reply }
+        "401":
+          {
+            description: Unauthorized,
+            content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+          }
+  /api/me:
+    get:
+      summary: Current patient data
+      responses:
+        "200": { description: Patient data }
+        "403": { description: Forbidden }
+  /api/patients:
+    get:
+      summary: List patients (masked)
+      responses:
+        "200": { description: Patient list }
+        "403": { description: Forbidden }
+  /api/patients/{id}/record:
+    get:
+      summary: Patient records (role-redacted)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Records }
+        "403": { description: Forbidden }
+  /api/triage:
+    post:
+      summary: Evaluate triage
+      responses:
+        "200": { description: Triage result }
+        "403": { description: Forbidden }
+  /api/urgent/simulate:
+    post:
+      summary: Simulate or queue urgent follow-up
+      responses:
+        "200": { description: Simulated }
+        "202": { description: Queued }
+        "403": { description: Forbidden }
+  /api/urgent/approve:
+    post:
+      summary: Create outbound approval
+      responses:
+        "200": { description: Approval created }
+        "403": { description: Forbidden }
+  /api/reports/generate:
+    post:
+      summary: Generate daily report
+      responses:
+        "200": { description: Report generated }
+        "403": { description: Forbidden }
+  /api/reports/download:
+    get:
+      summary: Download report
+      parameters:
+        - in: query
+          name: type
+          required: true
+          schema: { type: string, enum: [pdf, excel] }
+      responses:
+        "200": { description: File download }
+        "403": { description: Forbidden }
+  /api/orchestrator/run:
+    post:
+      summary: Run or queue orchestrator
+      responses:
+        "200": { description: Run result }
+        "202": { description: Queued }
+        "403": { description: Forbidden }

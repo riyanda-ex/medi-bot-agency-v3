@@ -15,11 +15,23 @@ export async function POST(request: Request): Promise<NextResponse> {
   const role = session?.user.role ?? "TIDAK_AKTIF";
 
   if (!hasPermission(role, "agent:run") || session?.user.invalid) {
-    await auditApiAccess({ request, session, action: "AGENT_RUN_DENIED", detail: `Peran ${role} mencoba menjalankan agent.` });
-    return NextResponse.json({ error: "Akses ditolak: hanya ADMIN yang bisa menjalankan agent." }, { status: 403 });
+    await auditApiAccess({
+      request,
+      session,
+      action: "AGENT_RUN_DENIED",
+      detail: `Peran ${role} mencoba menjalankan agent.`
+    });
+    return NextResponse.json(
+      { error: "Akses ditolak: hanya ADMIN yang bisa menjalankan agent." },
+      { status: 403 }
+    );
   }
 
-  const limited = enforceRateLimit(`orchestrator:${session?.user.id ?? getClientIp(request)}`, 5, 60_000);
+  const limited = await enforceRateLimit(
+    `orchestrator:${session?.user.id ?? getClientIp(request)}`,
+    5,
+    60_000
+  );
   if (limited) return limited;
 
   const trigger = session?.user.id ?? "SYSTEM";
@@ -32,7 +44,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   });
 
   if (queued.mode === "redis") {
-    return NextResponse.json({ queued: true, jobId: queued.jobId, detail: queued.detail }, { status: 202 });
+    return NextResponse.json(
+      { queued: true, jobId: queued.jobId, detail: queued.detail },
+      { status: 202 }
+    );
   }
 
   const result = await runAllAgents();

@@ -345,10 +345,20 @@ async function main(): Promise<void> {
 
     if (evaluation.level === "MERAH") {
       const stages = [
-        { channel: "WHATSAPP", attempt: 1, status: "SIMULATED", detail: "T+10 detik: WA (tanpa diagnosis)" },
+        {
+          channel: "WHATSAPP",
+          attempt: 1,
+          status: "SIMULATED",
+          detail: "T+10 detik: WA (tanpa diagnosis)"
+        },
         { channel: "CALL", attempt: 1, status: "SIMULATED", detail: "T+2 menit: telepon ke-1" },
         { channel: "CALL", attempt: 2, status: "SIMULATED", detail: "T+5 menit: telepon ke-2" },
-        { channel: "ESCALATION", attempt: 1, status: "SIMULATED", detail: "T+15 menit: eskalasi jaga" }
+        {
+          channel: "ESCALATION",
+          attempt: 1,
+          status: "SIMULATED",
+          detail: "T+15 menit: eskalasi jaga"
+        }
       ];
       for (const stage of stages) {
         await prisma.urgentCall.create({
@@ -409,9 +419,13 @@ async function main(): Promise<void> {
 
   console.log("[SEED] Selesai: 20 pasien, 3 MERAH, 5 KUNING, 12 HIJAU.");
   if (production) {
-    console.log("[SEED] Akun uji memakai SEED_PASSWORD dari environment (tidak ditampilkan di log).");
+    console.log(
+      "[SEED] Akun uji memakai SEED_PASSWORD dari environment (tidak ditampilkan di log)."
+    );
   } else {
-    console.log("[SEED] Login uji lokal: dokter@klinik.example / resepsionis@klinik.example / password123");
+    console.log(
+      "[SEED] Login uji lokal: dokter@klinik.example / resepsionis@klinik.example / password123"
+    );
   }
 }
 

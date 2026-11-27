@@ -32,6 +32,7 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  output: "standalone",
   serverExternalPackages: ["@prisma/client", "bcryptjs", "bullmq", "ioredis"],
   async headers() {
     return [

@@ -22,13 +22,25 @@ async function main(): Promise<void> {
   console.log("[VERIFY] Reporter:", reporter.reportId, reporter.files.pdf);
 
   const security = await runSecurityGuard();
-  console.log("[VERIFY] Security:", security.syncMode, "sync,", security.auditRetentionDays, "hari retensi");
+  console.log(
+    "[VERIFY] Security:",
+    security.syncMode,
+    "sync,",
+    security.auditRetentionDays,
+    "hari retensi"
+  );
 
   const engagement = await runEngagement();
   console.log("[VERIFY] Engagement:", JSON.stringify(engagement));
 
   const bugHunter = await runBugHunter();
-  console.log("[VERIFY] BugHunter:", bugHunter.findings.length, "temuan,", bugHunter.fixFiles.length, "file fix");
+  console.log(
+    "[VERIFY] BugHunter:",
+    bugHunter.findings.length,
+    "temuan,",
+    bugHunter.fixFiles.length,
+    "file fix"
+  );
 
   const urgentCalls = await prisma.urgentCall.count();
   console.log("[VERIFY] Total urgent_calls:", urgentCalls);

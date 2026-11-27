@@ -118,8 +118,8 @@ export function TriageForm({ patients }: { patients: PatientOption[] }) {
       <header>
         <h1 className="text-2xl font-semibold">Triage Pasien</h1>
         <p className="text-sm text-muted-foreground">
-          Hasil MERAH muncul segera setelah submit. Default semua pesan bersifat simulasi; pengiriman
-          nyata hanya berjalan dengan ALLOW_REAL_OUTBOUND=true dan approval DOKTER/ADMIN.
+          Hasil MERAH muncul segera setelah submit. Default semua pesan bersifat simulasi;
+          pengiriman nyata hanya berjalan dengan ALLOW_REAL_OUTBOUND=true dan approval DOKTER/ADMIN.
         </p>
       </header>
 
@@ -202,8 +202,13 @@ export function TriageForm({ patients }: { patients: PatientOption[] }) {
               {stages.length > 0 ? (
                 <ol className="space-y-2 text-sm">
                   {stages.map((stage) => (
-                    <li key={`${stage.label}-${stage.offsetSeconds}`} className="rounded border p-3">
-                      <span className="font-semibold">T+{stage.offsetSeconds} detik — {stage.label}</span>
+                    <li
+                      key={`${stage.label}-${stage.offsetSeconds}`}
+                      className="rounded border p-3"
+                    >
+                      <span className="font-semibold">
+                        T+{stage.offsetSeconds} detik — {stage.label}
+                      </span>
                       <span className="ml-2">{stage.status}</span>
                       <p className="text-muted-foreground">{stage.detail}</p>
                     </li>

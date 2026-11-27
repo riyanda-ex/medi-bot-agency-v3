@@ -10,6 +10,7 @@ Harapan: **28/28 tes lulus** — 10 tes triage (`tests/triage.test.ts`), 3 tes h
 (`fixes/fixes.test.ts`), dan 15 tes hardening (`tests/hardening.test.ts`).
 
 Cakupan triage:
+
 1. TD 190/120 → MERAH
 2. Diastolik 115 → MERAH
 3. Gula 320 dan 45 → MERAH
