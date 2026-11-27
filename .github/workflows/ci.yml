@@ -68,18 +68,16 @@ jobs:
           --health-retries 10
       redis:
         image: redis:7-alpine
-        command:
-          ["redis-server", "--appendonly", "yes", "--requirepass", "medibot_ci_redis_password"]
         ports:
           - 6379:6379
         options: >-
-          --health-cmd "redis-cli -a medibot_ci_redis_password ping"
+          --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
       DATABASE_URL: postgresql://medibot:medibot_ci_password@localhost:5432/medibot?schema=public
-      REDIS_URL: redis://:medibot_ci_redis_password@localhost:6379
+      REDIS_URL: redis://localhost:6379
       SYNC_MODE: "false"
     steps:
       - uses: actions/checkout@v4.2.2
@@ -128,18 +126,16 @@ jobs:
           --health-retries 10
       redis:
         image: redis:7-alpine
-        command:
-          ["redis-server", "--appendonly", "yes", "--requirepass", "medibot_ci_redis_password"]
         ports:
           - 6379:6379
         options: >-
-          --health-cmd "redis-cli -a medibot_ci_redis_password ping"
+          --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
       DATABASE_URL: postgresql://medibot:medibot_ci_password@localhost:5432/medibot?schema=public
-      REDIS_URL: redis://:medibot_ci_redis_password@localhost:6379
+      REDIS_URL: redis://localhost:6379
       SYNC_MODE: "false"
       QUEUE_MODE: redis
     steps:
