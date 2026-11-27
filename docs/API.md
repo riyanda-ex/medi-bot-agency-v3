@@ -1,0 +1,32 @@
+# API Reference (Summary)
+
+All API routes are under `app/api/*`. Mutating endpoints should be called same-origin with a valid authenticated session.
+
+## Authentication
+
+- Most endpoints require a valid NextAuth session.
+- Invalid/stale sessions are rejected (`401/403` depending route).
+- RBAC is fail-closed; unknown roles have no permissions.
+
+## Endpoints
+
+| Method | Path | Auth | Purpose | Notes |
+|---|---|---:|---|---|
+| GET/POST | `/api/auth/[...nextauth]` | Public/Auth | NextAuth handlers | Credentials auth. |
+| POST | `/api/chatbot` | Yes | Generic education chatbot | No diagnosis; rate limited; same-origin. |
+| GET | `/api/me` | Yes (own:read) | Current patient data | Returns masked NIK; patient-owned. |
+| POST | `/api/orchestrator/run` | Yes (agent:run) | Run/queue orchestrator | Returns 202+`jobId` in Redis mode. |
+| GET | `/api/patients` | Yes (patient:read/triage:write) | List patients | Masked NIK, limited fields. |
+| GET | `/api/patients/[id]/record` | Yes (patient:read) | Patient medical records | Diagnosis redacted by role. |
+| GET | `/api/reports/download?type=pdf|excel` | Yes (report:read) | Download latest report | Path contained to `reports/`. |
+| POST | `/api/reports/generate` | Yes (report:read/agent:run) | Generate daily report | Optional `approvalId` for real email. |
+| POST | `/api/triage` | Yes (triage:write) | Triage evaluation | Zod validated vitals; may trigger urgent flow. |
+| POST | `/api/urgent/approve` | Yes (DOKTER/ADMIN) | Create outbound approval | HMAC-signed, 30-min TTL. |
+| POST | `/api/urgent/simulate` | Yes (triage:write/agent:run) | Simulate/queue urgent follow-up | Validates patient/visit/log consistency. |
+
+## Security Controls
+
+- **Rate limiting**: per-user/IP on sensitive endpoints.
+- **Same-origin**: enforced on mutating sensitive endpoints.
+- **Audit logging**: access/deny/action events recorded with integrity signature.
+- **No-store**: API responses set `Cache-Control: no-store, max-age=0`.

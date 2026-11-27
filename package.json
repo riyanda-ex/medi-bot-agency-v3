@@ -12,7 +12,7 @@
   "bugs": {
     "url": "https://github.com/riyanda-ex/medi-bot-agency-v3/issues"
   },
-  "description": "Sistem multi-agent untuk rekam medis klinik Indonesia - fondasi aman, mock by default",
+  "description": "Secure-by-default multi-agent clinical operations foundation for Indonesian clinics (Next.js, Prisma, RBAC, audit, queue).",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

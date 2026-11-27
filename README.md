@@ -1,27 +1,79 @@
 # MEDI-BOT AGENCY v3
 
-Sistem multi-agent untuk rekam medis klinik Indonesia. Fondasi dibangun aman secara default:
-semua provider WhatsApp/telepon/email memakai `mock`, tidak ada kunci API asli di repository,
-pengiriman nyata memerlukan `ALLOW_REAL_OUTBOUND=true` **dan** approval manusia.
+> Multi-agent clinical operations foundation for Indonesian clinics — secure by default, mock by default, auditable by design.
 
-> **Penafian penting:** ini adalah sistem pendukung keputusan, **bukan alat medis tersertifikasi**.
-> Ambang triage berasal dari spesifikasi internal dan harus divalidasi oleh tenaga klinis sebelum
-> dipakai untuk pasien nyata. Lihat `PLAN.md` bagian batasan.
+[![CI](https://github.com/riyanda-ex/medi-bot-agency-v3/actions/workflows/ci.yml/badge.svg)](https://github.com/riyanda-ex/medi-bot-agency-v3/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/node-22%2B-339933?logo=node.js&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16.4.6-black?logo=next.js)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![License](https://img.shields.io/badge/license-Proprietary-red)
 
----
+MEDI-BOT AGENCY v3 is a Next.js App Router system that orchestrates seven specialized agents for clinical triage, medical record analysis, reporting, security auditing, and patient engagement. It is built for **safe local development first** and includes production hardening controls.
 
-## 1. Persyaratan
+> **Important medical disclaimer:** This software is a decision-support prototype, **not a certified medical device**. Triage thresholds are internal rules and must be clinically validated before any real-patient use.
 
-- Windows PowerShell (diuji), Node.js 22+, npm 11+
-- Next.js 16.4.6 + React 19 + TypeScript + Tailwind + Prisma
-- Tidak perlu Docker untuk mode testing (SQLite + `SYNC_MODE=true`)
-- PostgreSQL + Redis opsional untuk produksi: `docker compose up -d`
-- Worker BullMQ dijalankan terpisah dari server Next.js bila `QUEUE_MODE=redis`
+## Table of Contents
 
-## 2. Quickstart (Windows PowerShell)
+- [Key Features](#key-features)
+- [Security Posture](#security-posture)
+- [Tech Stack](#tech-stack)
+- [Quick Start](#quick-start)
+- [Available Scripts](#available-scripts)
+- [Project Structure](#project-structure)
+- [Configuration](#configuration)
+- [Production Deployment](#production-deployment)
+- [Documentation](#documentation)
+- [Contributing & Security](#contributing--security)
+- [License & IP](#license--ip)
+
+## Key Features
+
+- **7 agents**: RME Analyzer, Orchestrator, Bug Hunter, Auto Reporter, Urgent Triage + Auto Caller, Security Guard, Patient Engagement.
+- **Role-based access**: DOKTER, PERAWAT, RESEPSIONIS, ADMIN, PASIEN with fail-closed RBAC.
+- **Urgent triage workflow**: rule-based RED/YELLOW/GREEN evaluation with audit logging and simulated outbound follow-up.
+- **Human approval gate**: real outbound actions require explicit DOKTER/ADMIN approval (HMAC-signed, 30-minute TTL).
+- **Auditability**: signed audit records for API access, denials, approvals, and critical actions.
+- **Reporting**: PDF/Excel daily reports with download containment under `reports/`.
+- **Safe defaults**: mock WhatsApp/phone/email providers, no real keys in repo, outbound disabled by default.
+
+## Security Posture
+
+Implemented controls:
+
+- NextAuth credentials + JWT, DB session revalidation, invalid-session blocking.
+- Fail-closed RBAC and role-aware data redaction (diagnosis hidden from unauthorized roles).
+- AES-256-GCM field encryption for sensitive patient fields; NIK hashing/masking.
+- Signed audit logs with actor/role/method/path/IP/user-agent context.
+- Rate limiting, same-origin checks for mutating APIs, `Cache-Control: no-store` on API responses.
+- Security headers/CSP via `next.config.mjs` and protected-route proxy headers.
+- Signed/Zod-validated queue jobs; Redis production checks for password/TLS on public hosts.
+- Production env guards reject placeholder/DEV/CI secrets, `SYNC_MODE=true`, and disabled human approval.
+
+> No system can be guaranteed “unhackable”. Before real clinical deployment, complete the [Production Checklist](docs/PRODUCTION-CHECKLIST.md), external penetration testing, and legal/compliance review.
+
+## Tech Stack
+
+| Area | Technology |
+|---|---|
+| Framework | Next.js 16.4.6 (App Router), React 19 |
+| Language | TypeScript (strict) |
+| Styling/UI | Tailwind CSS, shadcn/ui pattern, Radix primitives |
+| Data | Prisma, SQLite (dev default), PostgreSQL (production) |
+| Auth | NextAuth Credentials/JWT |
+| Queue | Sync mode default; BullMQ + Redis optional |
+| Testing | Vitest, E2E script, queue check script |
+| CI | GitHub Actions (Windows verify, PostgreSQL/Redis E2E, BullMQ worker) |
+
+## Quick Start
+
+### Prerequisites
+
+- Windows PowerShell (tested), Node.js 22+, npm 11+
+- Docker **not required** for local dev (SQLite + `SYNC_MODE=true`)
+
+### Install & Run
 
 ```powershell
-cd C:\Users\Last Order\medi-bot-agency-v3
 Copy-Item .env.example .env
 npm install
 npm run db:setup
@@ -29,134 +81,109 @@ npm test
 npm run dev
 ```
 
-Buka `http://localhost:3000`, lalu masuk dengan akun uji lokal:
+Open `http://localhost:3000`.
 
-| Peran | Email | Kata sandi | Dapat melihat diagnosis? |
+### Local Development Accounts
+
+> For local development only. Login form does not auto-fill credentials. Production seeding is blocked unless `ALLOW_SEED=true` with a strong `SEED_PASSWORD`.
+
+| Role | Email | Password | Diagnosis Access |
 |---|---|---|---|
-| DOKTER | `dokter@klinik.example` | `password123` | Ya |
-| PERAWAT | `perawat@klinik.example` | `password123` | Triage saja |
-| RESEPSIONIS | `resepsionis@klinik.example` | `password123` | **Tidak** |
-| ADMIN | `admin@klinik.example` | `password123` | Ya |
-| PASIEN | `pasien@klinik.example` | `password123` | Data sendiri |
+| DOKTER | `dokter@klinik.example` | `password123` | Yes |
+| PERAWAT | `perawat@klinik.example` | `password123` | Triage only |
+| RESEPSIONIS | `resepsionis@klinik.example` | `password123` | No |
+| ADMIN | `admin@klinik.example` | `password123` | Yes |
+| PASIEN | `pasien@klinik.example` | `password123` | Own data |
 
-Kredensial ini **hanya untuk pengembangan**. Form login tidak mengisi otomatis, dan seed di
-produksi ditolak kecuali `ALLOW_SEED=true` dengan `SEED_PASSWORD` acak minimal 32 byte.
+## Available Scripts
 
-## 3. Skrip
-
-| Perintah | Fungsi |
+| Command | Description |
 |---|---|
-| `npm run dev` | Jalankan Next.js 16 (mode development) |
-| `npm test` | 28 tes: 10 triage, 3 helper Bug Hunter, 15 hardening |
-| `npm run typecheck` | Cek TypeScript |
-| `npm run db:push` | Sinkronkan schema SQLite |
-| `npm run db:seed` | Isi 20 pasien dummy (ditolak di produksi tanpa `ALLOW_SEED=true`) |
-| `npm run db:studio` | Prisma Studio |
-| `npm run prisma:generate:pg` | Hasilkan schema + client PostgreSQL dari `schema.prisma` |
-| `npm run db:setup:pg` | Push + seed PostgreSQL (set `DATABASE_URL` dulu) |
-| `npm run queue:worker` | Jalankan worker BullMQ (butuh `QUEUE_MODE=redis`) |
-| `npm run verify:agents` | Smoke test 6 agent + database (Orchestrator tidak dijalankan sebagai worker di skrip ini) |
-| `npm run e2e` | Cek HTTP end-to-end (server harus berjalan di :3000) |
-| `npm run queue:check` | Cek producer 202 + `jobId` saat `QUEUE_MODE=redis` |
+| `npm run dev` | Start Next.js development server. |
+| `npm run build` | Create production build. |
+| `npm run start` | Start production server. |
+| `npm run typecheck` | Run TypeScript checks. |
+| `npm test` | Run Vitest suite. |
+| `npm run db:setup` | Generate Prisma client, push SQLite schema, seed dev data. |
+| `npm run db:studio` | Open Prisma Studio. |
+| `npm run prisma:generate:pg` | Generate PostgreSQL Prisma schema/client. |
+| `npm run db:setup:pg` | Push + seed PostgreSQL (requires `DATABASE_URL`). |
+| `npm run queue:worker` | Run BullMQ worker (requires `QUEUE_MODE=redis`). |
+| `npm run verify:agents` | Smoke-test agents and DB. |
+| `npm run e2e` | Run HTTP E2E checks against running server. |
+| `npm run queue:check` | Verify Redis queue returns 202 + `jobId`. |
 
-## 4. Struktur
+## Project Structure
 
-Struktur detail dan aturan penempatan file: [`docs/STRUCTURE.md`](docs/STRUCTURE.md).
+See [`docs/STRUCTURE.md`](docs/STRUCTURE.md) for placement rules and security-sensitive areas.
 
-```
-app/                 UI + API Next.js (dashboard, triage, reports, audit, login, API)
-agents/              Tujuh agent sesuai spesifikasi, satu file per agent
-lib/                 env, auth, rbac, audit, approval, crypto, rateLimit, requestGuard,
-                     queue, triageRules, whatsapp, phone, prisma, agentLog, reportFiles
-prisma/              schema.prisma (17 model) + seed.ts
-tests/               triage.test.ts + hardening.test.ts
-fixes/               Artefak scan Bug Hunter (read-only) + tes helper
-components/          Komponen UI dan panel aplikasi
-scripts/             E2E, queue check, worker antrean, schema PostgreSQL
-docs/                Dokumentasi struktur/operasional
-.github/             CI, Dependabot, CODEOWNERS, template issue/PR
-docker-compose.yml   PostgreSQL + Redis untuk produksi (loopback + password)
-PLAN.md              Rencana kerja & status
-TESTING.md           Protokol pengujian
-SECURITY.md          Kebijakan pelaporan kerentanan
+```text
+app/         Next.js App Router UI + API routes
+agents/      7 domain agents
+lib/         Shared auth/rbac/env/crypto/audit/queue/guards
+components/  UI components
+prisma/      Schema + seed
+scripts/     Worker, E2E, queue checks, schema sync
+tests/       Vitest tests
+fixes/       Bug-hunter artifacts/helpers
+docs/        Architecture, API, structure, production checklist
+.github/     CI, Dependabot, templates, CODEOWNERS
 ```
 
-## 5. Provider dan pengaman yang bisa diganti lewat `.env`
+## Configuration
 
-| Variabel | Nilai |
-|---|---|
-| `WHATSAPP_PROVIDER` | `mock` (default), `fonnte`, `wablas` |
-| `PHONE_PROVIDER` | `mock` (default), `twilio` |
-| `ALLOW_REAL_OUTBOUND` | `false` (default) / `true` |
-| `REQUIRE_HUMAN_APPROVAL` | `true` (default; dipaksa di produksi) |
-| `QUEUE_MODE` | `sync` (default) / `redis` |
-| `REDIS_URL` | `redis://:password@localhost:6379` saat `QUEUE_MODE=redis` |
-| `TRUST_PROXY` | Daftar IP proxy tepercaya untuk `X-Forwarded-For` (kosong = diabaikan) |
-| `CRON_ALL_AGENTS`, `CRON_RED_CHECK` | Jadwal node-cron saat `ENABLE_SCHEDULER=true` |
+Copy `.env.example` to `.env`. Key variables:
 
-Keamanan runtime yang aktif:
+| Variable | Default | Purpose |
+|---|---|---|
+| `WHATSAPP_PROVIDER` | `mock` | `mock`, `fonnte`, `wablas` |
+| `PHONE_PROVIDER` | `mock` | `mock`, `twilio` |
+| `ALLOW_REAL_OUTBOUND` | `false` | Enables real outbound providers only with approval gates. |
+| `REQUIRE_HUMAN_APPROVAL` | `true` | Required for real outbound; forced in production. |
+| `QUEUE_MODE` | `sync` | `sync` or `redis`. |
+| `REDIS_URL` | - | Required for Redis queue mode. |
+| `TRUST_PROXY` | empty | Trusted proxy IPs for forwarded client IP. |
+| `SYNC_MODE` | `true` (dev) | Must be `false` in production. |
 
-- `NEXTAUTH_SECRET` dan `FIELD_ENCRYPTION_KEY` placeholder ditolak saat produksi.
-- `SYNC_MODE=true`, kunci DEV, seed publik, dan `REQUIRE_HUMAN_APPROVAL=false` ditolak saat produksi.
-- Login dibatasi per IP+email, kegagalan login diaudit tanpa kata sandi, sesi JWT direvalidasi
-  terhadap database setiap permintaan.
-- Endpoint API sensitif dilindungi rate limit, cek Origin same-origin untuk mutasi, dan
-  security headers/CSP; respons API disetel `no-store`.
-- Audit log memiliki peran, method, path, user agent, IP, dan tanda tangan HMAC.
-- Job BullMQ ditandatangani HMAC, divalidasi Zod di worker, dan `jobId`-nya deterministik.
-- Path file laporan dibatasi hanya di dalam folder `reports/`.
-- Approval nyata hanya DOKTER/ADMIN, berlaku 30 menit, dan diverifikasi ulang di worker/email.
+See `.env.example` for the full list.
 
-Tidak ada API key di kode. Semua kredensial dibaca dari `.env`, dan `.env` tidak masuk Git.
+## Production Deployment
 
-### Produksi (opsional)
+1. Follow [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md).
+2. Provision PostgreSQL + Redis (private network, auth/TLS as needed).
+3. Set strong secrets and production env guards.
+4. Run:
 
 ```powershell
 docker compose up -d
-# Isi POSTGRES_PASSWORD dan REDIS_PASSWORD di .env dengan nilai acak.
-# Set DATABASE_URL PostgreSQL, QUEUE_MODE=redis, REDIS_URL dengan password,
-# NEXTAUTH_SECRET dan FIELD_ENCRYPTION_KEY dengan kunci acak >= 32 byte.
 npm run db:setup:pg
 npm run build
 npm run queue:worker
 npm run start
 ```
 
-Mode `sync` menjalankan agent langsung di request API. Mode `redis` mengembalikan HTTP 202
-bersama `jobId`, lalu worker menjalankan `orchestrator.run` / `urgent.followup` dengan retry 3x
-(backoff eksponensial). Delay nyata `0/5/10/120/300/900` detik dipakai di mode redis; mode sync
-memakai fast-forward agar DoD tetap < 5 detik.
+`QUEUE_MODE=redis` returns HTTP 202 + `jobId` for queued work; run the worker as a separate process.
 
-## 6. Status implementasi
+## Documentation
 
-Langkah 0–5, hardening, dan audit lanjutan selesai. Verifikasi terakhir: `npm test` 28/28,
-`npm run typecheck` bersih, `npm run build` bersih, `npm audit --audit-level=high` 0 vulnerability,
-dan `npm run e2e` lolos semua check dari database yang sudah di-seed.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system design and data flow.
+- [`docs/API.md`](docs/API.md) — API endpoint summary.
+- [`docs/STRUCTURE.md`](docs/STRUCTURE.md) — repository layout and placement rules.
+- [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md) — deployment hardening checklist.
+- [`TESTING.md`](TESTING.md) — testing protocol.
+- [`PLAN.md`](PLAN.md) — implementation plan and status.
+- [`SECURITY.md`](SECURITY.md) — vulnerability reporting.
+- [`CHANGELOG.md`](CHANGELOG.md) — notable changes.
 
-Hardening lanjutan mencakup: validasi environment produksi, approval manusia nyata + UI,
-RBAC fail-closed, brute-force protection, audit bertanda tangan, job antrean bertanda tangan,
-containment file laporan, grafik Excel nyata, dispatcher notifikasi, endpoint `/api/me` dan
-chatbot, serta CI worker BullMQ.
+## Contributing & Security
 
-Keputusan keamanan: Next.js 14 diganti ke 16.4.6 karena advisory kritis pada versi lama.
-Perubahan ini disetujui dan terdokumentasi di `PLAN.md`.
+- Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+- **Do not report security vulnerabilities in public issues.** Follow [`SECURITY.md`](SECURITY.md).
+- This repository is proprietary; external contributions require written owner authorization.
 
-## 7. Kepatuhan data
+## License & IP
 
-Data pasien (NIK, nomor HP, diagnosa) dienkripsi AES-256-GCM. NIK juga disimpan sebagai HMAC
-untuk deteksi duplikat tanpa menyimpan plaintext. Audit log mencatat aktor, peran, waktu, target,
-method, path, IP, user agent, dan tanda tangan integritas. `agent_logs` hanya berisi ringkasan
-tanpa angka vital atau teks diagnosis. Sebelum produksi: tinjau consent, retensi 1 tahun,
-enkripsi kunci terkelola, dan DPA provider sesuai UU PDP No. 27/2022.
+- [`LICENSE`](LICENSE) — Proprietary commercial license v3.1 (All Rights Reserved). Owner: `riyanda-ex`.
+- [`PATENT.md`](PATENT.md) — Patent status and draft materials. **No patent has been filed or granted.** Do not label as “Patent Pending” without official evidence.
 
-## 8. Hak kekayaan intelektual
-
-- `LICENSE` — **Proprietary commercial license v3.1 (All Rights Reserved)**. Pemilik:
-  `riyanda-ex`. Tidak ada lisensi default untuk pihak lain; akses repo tidak berarti izin
-  pakai/modifikasi/distribusi. Lisensi evaluasi hanya lewat izin tertulis, revokabel, dan
-  non-komersial. Tidak ada lisensi paten.
-- `PATENT.md` — status paten, draft invensi, draf klaim, dan checklist pengajuan DGIP.
-
-**Paten belum diajukan/diberikan.** Jangan memakai label “PATENT PENDING” atau
-“PATEN TERDAFTAR” sebelum ada bukti resmi dari otoritas paten. Konsultasikan draft klaim dengan
-konsultan paten sebelum pengajuan. Dokumen ini bukan nasihat hukum.
+This README is informational and not legal or medical advice.
