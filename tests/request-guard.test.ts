@@ -1,7 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/rateLimit", () => ({
-  checkRateLimit: vi.fn(async () => ({ allowed: true, remaining: 1, retryAfterSeconds: 0 })),
+  checkRateLimit: vi.fn(async () => ({
+    allowed: true,
+    remaining: 1,
+    retryAfterSeconds: 0,
+    backend: "memory"
+  })),
   rateLimitResponse: (r: unknown) => new Response(JSON.stringify(r), { status: 429 })
 }));
 vi.mock("@/lib/audit", () => ({ getRequestIp: () => "1.2.3.4" }));

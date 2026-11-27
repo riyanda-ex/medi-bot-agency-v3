@@ -86,6 +86,21 @@ export function assertSecureEnvironment(): EnvironmentCheck {
     if (!nextAuthUrl.startsWith("https://")) {
       errors.push("NEXTAUTH_URL produksi wajib https://");
     }
+    // Rate limit terpusat wajib di produksi kecuali eksplisit diizinkan untuk single-instance.
+    if (
+      process.env.RATE_LIMIT_MODE === "memory" &&
+      process.env.ALLOW_INSECURE_MEMORY_RATE_LIMIT !== "true"
+    ) {
+      errors.push(
+        "RATE_LIMIT_MODE=memory tidak diizinkan di produksi; gunakan redis atau set ALLOW_INSECURE_MEMORY_RATE_LIMIT=true untuk single-instance yang dipahami risikonya"
+      );
+    }
+    if (
+      process.env.RATE_LIMIT_MODE === "redis" &&
+      !(process.env.RATE_LIMIT_REDIS_URL || process.env.REDIS_URL)
+    ) {
+      errors.push("RATE_LIMIT_MODE=redis butuh RATE_LIMIT_REDIS_URL atau REDIS_URL");
+    }
   }
 
   if (errors.length > 0) {
