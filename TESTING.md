@@ -1,4 +1,4 @@
-# TESTING — MEDI-BOT AGENCY v3
+# TESTING — MediBot Clinical Operations Platform
 
 ## 1. Otomatis
 

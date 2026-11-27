@@ -33,7 +33,7 @@ export default function LoginPage() {
         className="w-full max-w-sm space-y-4 rounded-xl border bg-white p-6 shadow-sm"
       >
         <div>
-          <h1 className="text-xl font-semibold">MEDI-BOT AGENCY v3</h1>
+          <h1 className="text-xl font-semibold">MediBot Clinical Operations Platform</h1>
           <p className="text-sm text-muted-foreground">Masuk dengan akun klinik Anda.</p>
         </div>
         <label className="block text-sm font-medium">

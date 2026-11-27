@@ -1,4 +1,4 @@
-# MEDI-BOT AGENCY v3
+# MediBot Clinical Operations Platform
 
 **English** | [Bahasa Indonesia](README.id.md)
 
@@ -10,7 +10,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
 
-MEDI-BOT AGENCY v3 is a Next.js App Router system that orchestrates seven specialized agents for clinical triage, medical record analysis, reporting, security auditing, and patient engagement. It is built for **safe local development first** and includes production hardening controls.
+MediBot Clinical Operations Platform is a Next.js App Router system that orchestrates seven specialized agents for clinical triage, medical record analysis, reporting, security auditing, and patient engagement. It is built for **safe local development first** and includes production hardening controls.
 
 > **Important medical disclaimer:** This software is a decision-support prototype, **not a certified medical device**. Triage thresholds are internal rules and must be clinically validated before any real-patient use.
 

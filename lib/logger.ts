@@ -19,7 +19,7 @@ function log(level: Level, event: string, fields: Record<string, unknown> = {}):
     ts: new Date().toISOString(),
     level,
     event,
-    service: "medi-bot-agency-v3",
+    service: "medibot-clinical-ops",
     version: process.env.APP_VERSION || process.env.npm_package_version || "0.0.0",
     ...fields
   };

@@ -113,7 +113,7 @@ export async function generateReportPdf(data: DailyReportData, filePath: string)
     const doc = new PDFDocument({ margin: 50, size: "A4" });
     const stream = createWriteStream(filePath);
     doc.pipe(stream);
-    doc.fontSize(18).text("LAPORAN HARIAN MEDI-BOT AGENCY v3");
+    doc.fontSize(18).text("LAPORAN HARIAN MediBot Clinical Operations Platform");
     doc.fontSize(11).text(`Tanggal: ${data.date}`);
     doc.moveDown();
     doc.text(`Pasien baru: ${data.newPatients}`);
@@ -142,7 +142,7 @@ export async function generateReportPdf(data: DailyReportData, filePath: string)
 export async function generateReportExcel(data: DailyReportData, filePath: string): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "MEDI-BOT AGENCY v3";
+  workbook.creator = "MediBot Clinical Operations Platform";
 
   const summary = workbook.addWorksheet("Ringkasan");
   summary.columns = [
@@ -235,7 +235,7 @@ export async function sendReportEmail(
     await transport.sendMail({
       from: process.env.SMTP_FROM ?? "medi-bot@klinik.example",
       to: recipient,
-      subject: `Laporan harian MEDI-BOT AGENCY v3`,
+      subject: `Laporan harian MediBot Clinical Operations Platform`,
       text: "Terlampir laporan harian klinik.",
       attachments: attachments.map((filePath) => ({
         filename: path.basename(filePath),

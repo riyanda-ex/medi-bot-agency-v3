@@ -59,7 +59,7 @@ export default async function DashboardPage() {
     <main className="mx-auto max-w-6xl space-y-6 p-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Dashboard MEDI-BOT AGENCY v3</h1>
+          <h1 className="text-2xl font-semibold">Dashboard MediBot Clinical Operations Platform</h1>
           <p className="text-sm text-muted-foreground">
             Login sebagai {session?.user.name ?? "tamu"} — peran {role}
           </p>

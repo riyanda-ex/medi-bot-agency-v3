@@ -1,6 +1,6 @@
 # Production Checklist
 
-Use this before exposing MEDI-BOT AGENCY v3 to real users or clinical data.
+Use this before exposing MediBot Clinical Operations Platform to real users or clinical data.
 
 ## Configuration
 

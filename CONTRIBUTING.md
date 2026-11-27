@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in MEDI-BOT AGENCY v3. This repository is proprietary; contributions are accepted only with explicit written authorization from the owner (`riyanda-ex`).
+Thank you for your interest in MediBot Clinical Operations Platform. This repository is proprietary; contributions are accepted only with explicit written authorization from the owner (`riyanda-ex`).
 
 ## Before Contributing
 

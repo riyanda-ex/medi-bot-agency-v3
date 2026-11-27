@@ -1,6 +1,6 @@
 # Repository Structure
 
-This document describes the intended structure of MEDI-BOT AGENCY v3.
+This document describes the intended structure of MediBot Clinical Operations Platform.
 
 ## Top-Level
 

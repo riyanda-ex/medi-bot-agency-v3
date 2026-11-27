@@ -1,4 +1,4 @@
-// MEDI-BOT AGENCY v3 - Schema utama (SQLite untuk testing Windows tanpa Docker).
+// MediBot Clinical Operations Platform - Schema utama (SQLite untuk testing Windows tanpa Docker).
 // Untuk PostgreSQL: jalankan `npm run prisma:generate:pg` yang membuat
 // prisma/schema.postgres.prisma dari file ini.
 // Tidak memakai enum karena SQLite tidak mendukung enum. Status disimpan sebagai String.

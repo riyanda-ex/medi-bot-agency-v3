@@ -1,4 +1,4 @@
-# PATEN — MEDI-BOT AGENCY v3
+# PATEN — MediBot Clinical Operations Platform
 
 > **Status: BELUM ADA PERMOHONAN PATEN YANG DIAJUKAN ATAU DIBERIKAN.**
 >

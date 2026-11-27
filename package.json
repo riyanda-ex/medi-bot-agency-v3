@@ -1,5 +1,5 @@
 {
-  "name": "medi-bot-agency-v3",
+  "name": "medibot-clinical-ops",
   "version": "0.1.0",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
@@ -12,7 +12,7 @@
   "bugs": {
     "url": "https://github.com/riyanda-ex/medi-bot-agency-v3/issues"
   },
-  "description": "Secure-by-default multi-agent clinical operations foundation for Indonesian clinics (Next.js, Prisma, RBAC, audit, queue).",
+  "description": "Secure-by-default multi-agent clinical operations platform for Indonesian clinics (Next.js, Prisma, RBAC, audit, queue).",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

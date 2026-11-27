@@ -1,4 +1,4 @@
-# MEDI-BOT AGENCY v3
+# MediBot Clinical Operations Platform
 
 [English](README.md) | **Bahasa Indonesia**
 
@@ -10,7 +10,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
 
-MEDI-BOT AGENCY v3 adalah sistem Next.js App Router yang mengorkestrasi tujuh agent khusus untuk triase klinis, analisis rekam medis, pelaporan, audit keamanan, dan keterlibatan pasien. Sistem ini dibuat **aman untuk pengembangan lokal terlebih dahulu** dan memiliki kontrol hardening produksi.
+MediBot Clinical Operations Platform adalah sistem Next.js App Router yang mengorkestrasi tujuh agent khusus untuk triase klinis, analisis rekam medis, pelaporan, audit keamanan, dan keterlibatan pasien. Sistem ini dibuat **aman untuk pengembangan lokal terlebih dahulu** dan memiliki kontrol hardening produksi.
 
 > **Peringatan medis penting:** Perangkat lunak ini adalah prototipe pendukung keputusan, **bukan alat medis tersertifikasi**. Ambang triase adalah aturan internal dan harus divalidasi secara klinis sebelum digunakan pada pasien nyata.
 

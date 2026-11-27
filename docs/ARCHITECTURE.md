@@ -2,7 +2,7 @@
 
 ## Overview
 
-MEDI-BOT AGENCY v3 is a Next.js App Router application for Indonesian clinic workflows. It combines UI routes, API routes, domain agents, and infrastructure guards.
+MediBot Clinical Operations Platform is a Next.js App Router application for Indonesian clinic workflows. It combines UI routes, API routes, domain agents, and infrastructure guards.
 
 ## Layers
 

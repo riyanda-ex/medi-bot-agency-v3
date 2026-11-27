@@ -1,4 +1,4 @@
-# PLAN — MEDI-BOT AGENCY v3
+# PLAN — MediBot Clinical Operations Platform
 
 ## 1. Prinsip
 

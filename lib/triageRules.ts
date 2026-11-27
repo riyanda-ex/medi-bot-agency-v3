@@ -1,5 +1,5 @@
 /**
- * Aturan triage MEDI-BOT AGENCY v3.
+ * Aturan triage MediBot Clinical Operations Platform.
  * Murni deterministik dan tanpa dependency Prisma supaya bisa diuji cepat.
  * Ambang berasal dari spesifikasi sistem, BUKAN pedoman klinis resmi.
  * Validasi klinis wajib sebelum pemakaian nyata.

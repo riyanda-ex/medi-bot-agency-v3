@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MEDI-BOT AGENCY v3",
-  description: "Sistem multi-agent untuk rekam medis klinik Indonesia"
+  title: "MediBot Clinical Operations Platform",
+  description: "Platform operasional klinis multi-agent untuk klinik Indonesia"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

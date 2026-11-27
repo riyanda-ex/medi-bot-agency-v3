@@ -6,7 +6,7 @@ export async function GET(): Promise<NextResponse> {
   return NextResponse.json(
     {
       status: "ok",
-      service: "medi-bot-agency-v3",
+      service: "medibot-clinical-ops",
       timestamp: new Date().toISOString()
     },
     { headers: { "Cache-Control": "no-store, max-age=0" } }

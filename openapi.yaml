@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
-  title: MEDI-BOT AGENCY v3 API
+  title: MediBot Clinical Operations Platform API
   version: 0.1.0
   description: |
-    Internal API summary for MEDI-BOT AGENCY v3. This spec documents primary endpoints;
+    Internal API summary for MediBot Clinical Operations Platform. This spec documents primary endpoints;
     behavior is enforced by server-side auth, RBAC, rate limits, and approval gates.
 servers:
   - url: http://localhost:3000
