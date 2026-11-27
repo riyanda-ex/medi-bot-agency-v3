@@ -19,10 +19,10 @@ export default defineConfig({
       include: ["lib/**/*.ts", "agents/**/*.ts"],
       exclude: ["**/*.d.ts", "**/*.test.ts"],
       thresholds: {
-        lines: 20,
-        functions: 20,
-        statements: 20,
-        branches: 15
+        lines: 22,
+        functions: 29,
+        statements: 22,
+        branches: 23
       }
     }
   }

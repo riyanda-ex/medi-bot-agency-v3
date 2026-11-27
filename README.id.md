@@ -18,9 +18,9 @@ MediBot Clinical Operations Platform adalah sistem Next.js App Router yang mengo
 
 ## Tangkapan Layar
 
-| Dashboard Triase                                           | Approval & Audit                                                      | Login                                       |
-| ---------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------- |
-| ![Dashboard Triase](docs/assets/screenshots/dashboard.png) | ![Approval & Audit Trail](docs/assets/screenshots/approval-audit.png) | ![Login](docs/assets/screenshots/login.png) |
+| Dashboard (Live)                                    | Triase (Live)                                 | Laporan (Live)                                  | Audit (Live)                                |
+| --------------------------------------------------- | --------------------------------------------- | ----------------------------------------------- | ------------------------------------------- |
+| ![Dashboard](docs/assets/screenshots/dashboard.png) | ![Triase](docs/assets/screenshots/triage.png) | ![Laporan](docs/assets/screenshots/reports.png) | ![Audit](docs/assets/screenshots/audit.png) |
 
 ## Daftar Isi
 
