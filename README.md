@@ -16,6 +16,12 @@ MediBot Clinical Operations Platform is a Next.js App Router system that orchest
 
 ![MediBot Clinical Operations Platform social preview](docs/assets/social-preview.png)
 
+## Screenshots
+
+| Dashboard Triase | Approval & Audit | Login |
+|---|---|---|
+| ![Dashboard Triase](docs/assets/screenshots/dashboard.png) | ![Approval & Audit Trail](docs/assets/screenshots/approval-audit.png) | ![Login](docs/assets/screenshots/login.png) |
+
 ## Table of Contents
 
 - [Key Features](#key-features)
