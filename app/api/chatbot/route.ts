@@ -18,12 +18,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return deny(ctx, 401, "Autentikasi diperlukan.", "CHATBOT_DENIED", "Akses tanpa sesi.");
   }
 
-  const limited = await guardRateLimit(
-    ctx,
-    `chatbot:${ctx.session.user.id}:${ctx.ip}`,
-    20,
-    60_000
-  );
+  const limited = await guardRateLimit(ctx, `chatbot:${ctx.session.user.id}:${ctx.ip}`, 20, 60_000);
   if (limited) return limited;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));

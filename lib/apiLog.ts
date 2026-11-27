@@ -35,7 +35,10 @@ export async function logApiRequest(input: ApiLogInput): Promise<void> {
       }
     });
   } catch (error) {
-    logger.warn("api_log.write_failed", { requestId: input.requestId, error: (error as Error).message });
+    logger.warn("api_log.write_failed", {
+      requestId: input.requestId,
+      error: (error as Error).message
+    });
   }
 }
 

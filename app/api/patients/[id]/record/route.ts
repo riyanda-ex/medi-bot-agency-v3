@@ -36,7 +36,11 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
       userId: ctx.userId,
       error: "forbidden"
     });
-    return jsonWithRequestId(ctx.requestId, { error: "Akses ditolak.", requestId: ctx.requestId }, { status: 403 });
+    return jsonWithRequestId(
+      ctx.requestId,
+      { error: "Akses ditolak.", requestId: ctx.requestId },
+      { status: 403 }
+    );
   }
 
   const limited = await guardRateLimit(ctx, `record:${ctx.userId ?? ctx.ip}`, 120, 60_000);
