@@ -1,14 +1,11 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
 import { buildUrgentJobId, enqueueJob } from "@/lib/queue";
 import { prisma } from "@/lib/prisma";
 import { executeUrgentFollowUp } from "@/agents/urgentCaller";
-import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestGuard";
+import { createApiContext, deny, guardOrigin, guardRateLimit, ok } from "@/lib/apiRoute";
 
 const bodySchema = z
   .object({
@@ -21,99 +18,62 @@ const bodySchema = z
   });
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const requestId = getRequestId(request);
-  const startedAt = Date.now();
-  void startedAt;
-  const originBlocked = enforceSameOrigin(request);
+  const ctx = await createApiContext(request, "/api/urgent/simulate");
+  const originBlocked = guardOrigin(ctx);
   if (originBlocked) return originBlocked;
-
-  const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "TIDAK_AKTIF";
-
   if (
-    (!hasPermission(role, "triage:write") && !hasPermission(role, "agent:run")) ||
-    session?.user.invalid
+    (!hasPermission(ctx.role, "triage:write") && !hasPermission(ctx.role, "agent:run")) ||
+    ctx.sessionInvalid
   ) {
-    await auditApiAccess({
-      request,
-      session,
-      action: "URGENT_SIMULATE_DENIED",
-      detail: `Peran ${role} mencoba simulasi panggilan urgent.`
-    });
-    return jsonWithRequestId(requestId, { error: "Akses ditolak." }, { status: 403 });
-  }
-
-  const limited = await enforceRateLimit(
-    `urgent-sim:${session?.user.id ?? getClientIp(request)}`,
-    20,
-    60_000
-  );
-  if (limited) return limited;
-
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    return jsonWithRequestId(
-      requestId,
-      { error: "Data tidak valid.", detail: parsed.error.flatten() },
-      { status: 400 }
+    return deny(
+      ctx,
+      403,
+      "Akses ditolak.",
+      "URGENT_SIMULATE_DENIED",
+      `Peran ${ctx.role} mencoba simulasi panggilan urgent.`
     );
   }
+  const limited = await guardRateLimit(ctx, `urgent-sim:${ctx.userId ?? ctx.ip}`, 20, 60_000);
+  if (limited) return limited;
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success)
+    return deny(ctx, 400, "Data tidak valid.", "URGENT_SIMULATE_INVALID", undefined, {
+      detail: parsed.error.flatten()
+    });
 
-  // Semua ID harus mengarah ke pasien yang sama; tidak ada fallback "MERAH terbaru".
   let patientId = parsed.data.patientId;
   if (parsed.data.triageLogId) {
     const log = await prisma.triageLog.findUnique({
       where: { id: parsed.data.triageLogId },
       select: { patientId: true, visitId: true }
     });
-    if (!log)
-      return jsonWithRequestId(
-        requestId,
-        { error: "Triage log tidak ditemukan." },
-        { status: 404 }
-      );
-    if (patientId && patientId !== log.patientId) {
-      return jsonWithRequestId(
-        requestId,
-        { error: "patientId tidak cocok dengan triageLogId." },
-        { status: 400 }
-      );
-    }
+    if (!log) return deny(ctx, 404, "Triage log tidak ditemukan.", "URGENT_SIMULATE_NOT_FOUND");
+    if (patientId && patientId !== log.patientId)
+      return deny(ctx, 400, "patientId tidak cocok dengan triageLogId.", "URGENT_SIMULATE_INVALID");
     patientId = log.patientId;
-    if (parsed.data.visitId && log.visitId && parsed.data.visitId !== log.visitId) {
-      return jsonWithRequestId(
-        requestId,
-        { error: "visitId tidak cocok dengan triageLogId." },
-        { status: 400 }
-      );
-    }
+    if (parsed.data.visitId && log.visitId && parsed.data.visitId !== log.visitId)
+      return deny(ctx, 400, "visitId tidak cocok dengan triageLogId.", "URGENT_SIMULATE_INVALID");
   }
   if (parsed.data.visitId) {
     const visit = await prisma.visit.findUnique({
       where: { id: parsed.data.visitId },
       select: { patientId: true }
     });
-    if (!visit)
-      return jsonWithRequestId(requestId, { error: "Kunjungan tidak ditemukan." }, { status: 404 });
-    if (patientId && patientId !== visit.patientId) {
-      return jsonWithRequestId(
-        requestId,
-        { error: "patientId tidak cocok dengan visitId." },
-        { status: 400 }
-      );
-    }
+    if (!visit) return deny(ctx, 404, "Kunjungan tidak ditemukan.", "URGENT_SIMULATE_NOT_FOUND");
+    if (patientId && patientId !== visit.patientId)
+      return deny(ctx, 400, "patientId tidak cocok dengan visitId.", "URGENT_SIMULATE_INVALID");
     patientId = visit.patientId;
   }
-  if (!patientId) {
-    return jsonWithRequestId(
-      requestId,
-      { error: "Pasien tidak ditemukan dari ID yang diberikan." },
-      { status: 404 }
+  if (!patientId)
+    return deny(
+      ctx,
+      404,
+      "Pasien tidak ditemukan dari ID yang diberikan.",
+      "URGENT_SIMULATE_NOT_FOUND"
     );
-  }
 
   const context = {
-    actor: session?.user.id ?? "SYSTEM",
+    actor: ctx.userId ?? "SYSTEM",
     simulate: true,
     stage: 0,
     resource: parsed.data.triageLogId ?? parsed.data.visitId ?? patientId
@@ -124,32 +84,33 @@ export async function POST(request: Request): Promise<NextResponse> {
       patientId,
       visitId: parsed.data.visitId,
       triageLogId: parsed.data.triageLogId,
-      actorId: session?.user.id,
+      actorId: ctx.userId,
       simulate: true
     },
     { jobId: buildUrgentJobId("urgent-sim", patientId, context) }
   );
-
   await auditApiAccess({
-    request,
-    session,
+    request: ctx.request,
+    session: ctx.session,
     action: queued.mode === "redis" ? "URGENT_SIMULATE_QUEUED" : "URGENT_SIMULATE",
     targetPatientId: patientId,
-    detail: queued.detail
+    detail: queued.detail,
+    requestId: ctx.requestId
   });
 
   if (queued.mode === "redis") {
-    return jsonWithRequestId(
-      requestId,
+    return ok(
+      ctx,
       {
         patientId,
         queued: true,
         jobId: queued.jobId,
         stages: [],
         totalLogs: 0,
-        detail: queued.detail
+        detail: queued.detail,
+        requestId: ctx.requestId
       },
-      { status: 202 }
+      202
     );
   }
 
@@ -157,9 +118,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     patientId,
     visitId: parsed.data.visitId,
     triageLogId: parsed.data.triageLogId,
-    actorId: session?.user.id,
+    actorId: ctx.userId,
     simulate: true
   });
-
-  return jsonWithRequestId(requestId, { patientId, stages, totalLogs: stages.length });
+  return ok(ctx, { patientId, stages, totalLogs: stages.length, requestId: ctx.requestId });
 }

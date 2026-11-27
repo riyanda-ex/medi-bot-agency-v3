@@ -1,61 +1,44 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
-import { authOptions } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { runAllAgents } from "@/agents/orchestrator";
+import { createApiContext, deny, guardOrigin, guardRateLimit, ok } from "@/lib/apiRoute";
 import { auditApiAccess } from "@/lib/audit";
 import { enqueueJob } from "@/lib/queue";
-import { runAllAgents } from "@/agents/orchestrator";
-import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestGuard";
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const requestId = getRequestId(request);
-  const startedAt = Date.now();
-  void startedAt;
-  const originBlocked = enforceSameOrigin(request);
+  const ctx = await createApiContext(request, "/api/orchestrator/run");
+  const originBlocked = guardOrigin(ctx);
   if (originBlocked) return originBlocked;
-
-  const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "TIDAK_AKTIF";
-
-  if (!hasPermission(role, "agent:run") || session?.user.invalid) {
-    await auditApiAccess({
-      request,
-      session,
-      action: "AGENT_RUN_DENIED",
-      detail: `Peran ${role} mencoba menjalankan agent.`
-    });
-    return jsonWithRequestId(
-      requestId,
-      { error: "Akses ditolak: hanya ADMIN yang bisa menjalankan agent." },
-      { status: 403 }
+  if (!hasPermission(ctx.role, "agent:run") || ctx.sessionInvalid) {
+    return deny(
+      ctx,
+      403,
+      "Akses ditolak: hanya ADMIN yang bisa menjalankan agent.",
+      "AGENT_RUN_DENIED",
+      `Peran ${ctx.role} mencoba menjalankan agent.`
     );
   }
-
-  const limited = await enforceRateLimit(
-    `orchestrator:${session?.user.id ?? getClientIp(request)}`,
-    5,
-    60_000
-  );
+  const limited = await guardRateLimit(ctx, `orchestrator:${ctx.userId ?? ctx.ip}`, 5, 60_000);
   if (limited) return limited;
 
-  const trigger = session?.user.id ?? "SYSTEM";
+  const trigger = ctx.userId ?? "SYSTEM";
   const queued = await enqueueJob("orchestrator.run", { triggeredBy: trigger });
   await auditApiAccess({
-    request,
-    session,
+    request: ctx.request,
+    session: ctx.session,
     action: queued.mode === "redis" ? "AGENT_RUN_QUEUED" : "AGENT_RUN",
-    detail: queued.detail
+    detail: queued.detail,
+    requestId: ctx.requestId
   });
 
   if (queued.mode === "redis") {
-    return jsonWithRequestId(
-      requestId,
-      { queued: true, jobId: queued.jobId, detail: queued.detail },
-      { status: 202 }
+    return ok(
+      ctx,
+      { queued: true, jobId: queued.jobId, detail: queued.detail, requestId: ctx.requestId },
+      202
     );
   }
 
   const result = await runAllAgents();
-  return jsonWithRequestId(requestId, result);
+  return ok(ctx, { ...result, requestId: ctx.requestId });
 }

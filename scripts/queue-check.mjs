@@ -45,45 +45,61 @@ async function check(name, condition, detail = "") {
   console.log(`OK   ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
+async function readJson(response, label) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(
+      `${label} mengembalikan JSON tidak valid (status=${response.status}): ${text.slice(0, 200)}`
+    );
+  }
+}
+
 async function main() {
   const auth = await login();
 
   const runResponse = await fetch(`${BASE}/api/orchestrator/run`, {
     method: "POST",
-    headers: auth
+    headers: { Accept: "application/json", ...auth }
   });
-  const run = await runResponse.json();
+  const run = await readJson(runResponse, "Manual Run");
   await check(
     "Manual Run masuk antrean (202)",
     runResponse.status === 202,
-    `status=${runResponse.status}`
+    `status=${runResponse.status} body=${JSON.stringify(run)}`
   );
   await check(
     "Manual Run memiliki jobId",
-    typeof run.jobId === "string" && run.jobId.length > 0,
-    run.jobId
+    typeof run?.jobId === "string" && run.jobId.length > 0,
+    run?.jobId
   );
 
-  const patientsResponse = await fetch(`${BASE}/api/patients`, { headers: auth });
-  const { patients } = await patientsResponse.json();
+  const patientsResponse = await fetch(`${BASE}/api/patients`, {
+    headers: { Accept: "application/json", ...auth }
+  });
+  const patientsBody = await readJson(patientsResponse, "Daftar pasien");
+  const patients = patientsBody?.patients;
   if (!Array.isArray(patients) || patients.length === 0)
-    throw new Error("Tidak ada pasien untuk simulasi.");
+    throw new Error(
+      `Tidak ada pasien untuk simulasi (status=${patientsResponse.status}): ${JSON.stringify(patientsBody)}`
+    );
 
   const simulateResponse = await fetch(`${BASE}/api/urgent/simulate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...auth },
+    headers: { "Content-Type": "application/json", Accept: "application/json", ...auth },
     body: JSON.stringify({ patientId: patients[0].id })
   });
-  const simulated = await simulateResponse.json();
+  const simulated = await readJson(simulateResponse, "Simulasi urgent");
   await check(
     "Simulasi urgent masuk antrean (202)",
     simulateResponse.status === 202,
-    `status=${simulateResponse.status}`
+    `status=${simulateResponse.status} body=${JSON.stringify(simulated)}`
   );
   await check(
     "Simulasi urgent memiliki jobId",
-    typeof simulated.jobId === "string" && simulated.jobId.length > 0,
-    simulated.jobId
+    typeof simulated?.jobId === "string" && simulated.jobId.length > 0,
+    simulated?.jobId
   );
 
   console.log("\nQUEUE MODE OK: producer dan worker terpisah aktif.");

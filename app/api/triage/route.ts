@@ -1,16 +1,18 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
-import { hasPermission } from "@/lib/rbac";
-import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { runUrgentTriage } from "@/agents/urgentCaller";
 import { writeAgentLog } from "@/lib/agentLog";
-import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestGuard";
-import { getRequestId, jsonWithRequestId, withRequestId } from "@/lib/requestContext";
-import { logApiRequest } from "@/lib/apiLog";
+import { auditApiAccess } from "@/lib/audit";
 import { logger } from "@/lib/logger";
+import {
+  createApiContext,
+  deny,
+  guardOrigin,
+  guardRateLimit,
+  ok,
+  requirePermission
+} from "@/lib/apiRoute";
 
 const vitalsSchema = z.object({
   systolic: z.number().int().min(0).max(300).nullable().optional(),
@@ -33,112 +35,38 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const requestId = getRequestId(request);
-  const startedAt = Date.now();
-  const originBlocked = enforceSameOrigin(request);
-  if (originBlocked) {
-    void logApiRequest({
-      requestId,
-      method: "POST",
-      path: "/api/triage",
-      statusCode: 403,
-      durationMs: Date.now() - startedAt,
-      ip: getClientIp(request),
-      error: "origin"
-    });
-    return withRequestId(originBlocked, requestId);
-  }
+  const ctx = await createApiContext(request, "/api/triage");
+  const originBlocked = guardOrigin(ctx);
+  if (originBlocked) return originBlocked;
 
-  const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "TIDAK_AKTIF";
-
-  if (!hasPermission(role, "triage:write") || session?.user.invalid) {
-    await auditApiAccess({
-      request,
-      session,
-      action: "TRIAGE_DENIED",
-      detail: `Peran ${role} mencoba melakukan triage.`,
-      requestId
-    });
-    void logApiRequest({
-      requestId,
-      method: "POST",
-      path: "/api/triage",
-      statusCode: 403,
-      durationMs: Date.now() - startedAt,
-      ip: getClientIp(request),
-      userId: session?.user.id,
-      error: "forbidden"
-    });
-    return jsonWithRequestId(
-      requestId,
-      { error: "Akses ditolak: peran Anda tidak boleh melakukan triage.", requestId },
-      { status: 403 }
+  if (!requirePermission(ctx, "triage:write")) {
+    return deny(
+      ctx,
+      403,
+      "Akses ditolak: peran Anda tidak boleh melakukan triage.",
+      "TRIAGE_DENIED",
+      `Peran ${ctx.role} mencoba melakukan triage.`
     );
   }
 
-  const limited = await enforceRateLimit(
-    `triage:${session?.user.id ?? getClientIp(request)}`,
-    60,
-    60_000
-  );
-  if (limited) {
-    void logApiRequest({
-      requestId,
-      method: "POST",
-      path: "/api/triage",
-      statusCode: 429,
-      durationMs: Date.now() - startedAt,
-      ip: getClientIp(request),
-      userId: session?.user.id,
-      error: "rate_limited"
-    });
-    return withRequestId(limited, requestId);
-  }
+  const limited = await guardRateLimit(ctx, `triage:${ctx.userId ?? ctx.ip}`, 60, 60_000);
+  if (limited) return limited;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    void logApiRequest({
-      requestId,
-      method: "POST",
-      path: "/api/triage",
-      statusCode: 400,
-      durationMs: Date.now() - startedAt,
-      ip: getClientIp(request),
-      userId: session?.user.id,
-      error: "invalid_payload"
+    return deny(ctx, 400, "Data tidak valid.", "TRIAGE_INVALID", undefined, {
+      detail: parsed.error.flatten()
     });
-    return jsonWithRequestId(
-      requestId,
-      { error: "Data tidak valid.", detail: parsed.error.flatten(), requestId },
-      { status: 400 }
-    );
   }
 
   const patient = await prisma.patient.findUnique({ where: { id: parsed.data.patientId } });
-  if (!patient) {
-    void logApiRequest({
-      requestId,
-      method: "POST",
-      path: "/api/triage",
-      statusCode: 404,
-      durationMs: Date.now() - startedAt,
-      ip: getClientIp(request),
-      userId: session?.user.id,
-      error: "patient_not_found"
-    });
-    return jsonWithRequestId(
-      requestId,
-      { error: "Pasien tidak ditemukan.", requestId },
-      { status: 404 }
-    );
-  }
+  if (!patient) return deny(ctx, 404, "Pasien tidak ditemukan.", "TRIAGE_PATIENT_NOT_FOUND");
 
   const { vitals } = parsed.data;
   const visit = await prisma.visit.create({
     data: {
       patientId: patient.id,
-      doctorId: session?.user.doctorId ?? undefined,
+      doctorId: (ctx.session?.user as { doctorId?: string } | undefined)?.doctorId ?? undefined,
       visitDate: new Date(),
       status: "COMPLETED",
       complaint: parsed.data.complaint ?? "Input triage dashboard",
@@ -158,47 +86,39 @@ export async function POST(request: Request): Promise<NextResponse> {
     patientId: patient.id,
     visitId: visit.id,
     source: "DASHBOARD_TRIAGE",
-    actorId: session?.user.id,
+    actorId: ctx.userId,
     approvalId: parsed.data.approvalId
   });
 
   await writeAgentLog({
     agentName: "TRIAGE_API",
     status: "SUCCESS",
-    message: `Triage ${result.level} selesai dalam ${Date.now() - startedAt} ms`,
+    message: `Triage ${result.level} selesai dalam ${Date.now() - ctx.startedAt} ms`,
     runId: result.triageLogId,
-    durationMs: Date.now() - startedAt
+    durationMs: Date.now() - ctx.startedAt
   });
 
   await auditApiAccess({
-    request,
-    session,
+    request: ctx.request,
+    session: ctx.session,
     action: "TRIAGE_SUBMIT",
     targetPatientId: patient.id,
-    detail: `Level ${result.level}, triageLog ${result.triageLogId}, latensi ${Date.now() - startedAt} ms.`,
-    requestId
+    detail: `Level ${result.level}, triageLog ${result.triageLogId}, latensi ${Date.now() - ctx.startedAt} ms.`,
+    requestId: ctx.requestId
   });
   logger.info("triage.submit", {
-    requestId,
+    requestId: ctx.requestId,
     patientId: patient.id,
     level: result.level,
-    latencyMs: Date.now() - startedAt,
-    actorId: session?.user.id
+    latencyMs: Date.now() - ctx.startedAt,
+    actorId: ctx.userId
   });
-  void logApiRequest({
-    requestId,
-    method: "POST",
-    path: "/api/triage",
-    statusCode: 200,
-    durationMs: Date.now() - startedAt,
-    ip: getClientIp(request),
-    userId: session?.user.id
-  });
-  return jsonWithRequestId(requestId, {
+
+  return ok(ctx, {
     ...result,
-    latencyMs: Date.now() - startedAt,
+    latencyMs: Date.now() - ctx.startedAt,
     visitId: visit.id,
     patientName: patient.name,
-    requestId
+    requestId: ctx.requestId
   });
 }

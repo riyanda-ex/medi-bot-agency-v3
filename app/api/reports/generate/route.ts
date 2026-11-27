@@ -1,60 +1,28 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { auditApiAccess } from "@/lib/audit";
 import { runReporter } from "@/agents/reporter";
-import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestGuard";
+import { createApiContext, deny, guardOrigin, guardRateLimit, ok } from "@/lib/apiRoute";
+import { auditApiAccess } from "@/lib/audit";
 
-const bodySchema = z.object({
-  approvalId: z.string().min(1).optional()
-});
+const bodySchema = z.object({ approvalId: z.string().min(1).optional() });
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const requestId = getRequestId(request);
-  const startedAt = Date.now();
-  void startedAt;
-  const originBlocked = enforceSameOrigin(request);
+  const ctx = await createApiContext(request, "/api/reports/generate");
+  const originBlocked = guardOrigin(ctx);
   if (originBlocked) return originBlocked;
-
-  const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "TIDAK_AKTIF";
-
-  if ((!hasPermission(role, "report:read") && !hasPermission(role, "agent:run")) || session?.user.invalid) {
-    await auditApiAccess({ request, session, action: "REPORT_GENERATE_DENIED", detail: `Peran ${role} mencoba membuat laporan.` });
-    return jsonWithRequestId(requestId, { error: "Akses ditolak." }, { status: 403 });
+  if ((!hasPermission(ctx.role, "report:read") && !hasPermission(ctx.role, "agent:run")) || ctx.sessionInvalid) {
+    return deny(ctx, 403, "Akses ditolak.", "REPORT_GENERATE_DENIED", `Peran ${ctx.role} mencoba membuat laporan.`);
   }
-
-  const limited = await enforceRateLimit(`report-generate:${session?.user.id ?? getClientIp(request)}`, 10, 60_000);
+  const limited = await guardRateLimit(ctx, `report-generate:${ctx.userId ?? ctx.ip}`, 10, 60_000);
   if (limited) return limited;
-
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    return jsonWithRequestId(requestId, { error: "Data tidak valid." }, { status: 400 });
-  }
-
+  if (!parsed.success) return deny(ctx, 400, "Data tidak valid.", "REPORT_GENERATE_INVALID");
   const result = await runReporter(new Date(), parsed.data.approvalId);
-  await auditApiAccess({
-    request,
-    session,
-    action: "REPORT_GENERATE",
-    detail: `Laporan ${result.reportId} dibuat (PDF + Excel).`
-  });
-
-  return jsonWithRequestId(requestId, {
-    reportId: result.reportId,
-    date: result.data.date,
-    summary: {
-      newPatients: result.data.newPatients,
-      controls: result.data.controls,
-      cancelled: result.data.cancelled,
-      urgent: result.data.urgent,
-      pendingClaims: result.data.pendingClaims,
-      visits7Days: result.data.visits7Days
-    },
-    files: result.files,
-    email: result.email
+  await auditApiAccess({ request: ctx.request, session: ctx.session, action: "REPORT_GENERATE", detail: `Laporan ${result.reportId} dibuat (PDF + Excel).`, requestId: ctx.requestId });
+  return ok(ctx, {
+    reportId: result.reportId, date: result.data.date,
+    summary: { newPatients: result.data.newPatients, controls: result.data.controls, cancelled: result.data.cancelled, urgent: result.data.urgent, pendingClaims: result.data.pendingClaims, visits7Days: result.data.visits7Days },
+    files: result.files, email: result.email, requestId: ctx.requestId
   });
 }
