@@ -90,9 +90,6 @@ export function assertRedisSecurity(): void {
   } catch {
     errors.push("REDIS_URL tidak valid.");
   }
-  if (parsed && !parsed.password) {
-    errors.push("REDIS_URL produksi wajib memuat password (requirepass).");
-  }
   if (parsed) {
     const host = parsed.hostname.toLowerCase();
     const privateHost =
@@ -103,6 +100,9 @@ export function assertRedisSecurity(): void {
       host.startsWith("192.168.") ||
       /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
       host.endsWith(".internal");
+    if (!parsed.password && !privateHost) {
+      errors.push("REDIS_URL produksi wajib memuat password (requirepass) kecuali host privat/lokal.");
+    }
     if (!privateHost && parsed.protocol !== "rediss:" && process.env.REDIS_TLS !== "true") {
       errors.push("Redis di jaringan publik wajib REDIS_TLS=true atau skema rediss://.");
     }
