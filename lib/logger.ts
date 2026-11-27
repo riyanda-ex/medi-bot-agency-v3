@@ -18,7 +18,11 @@ function sentryDsn(): string | undefined {
   return dsn ? dsn : undefined;
 }
 
-async function reportToSentry(level: Level, event: string, fields: Record<string, unknown>): Promise<void> {
+async function reportToSentry(
+  level: Level,
+  event: string,
+  fields: Record<string, unknown>
+): Promise<void> {
   const dsn = sentryDsn();
   if (!dsn || (level !== "error" && level !== "warn")) return;
   try {
