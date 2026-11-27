@@ -30,7 +30,7 @@ jobs:
     name: Verifikasi Windows PowerShell
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v4.4.0
         with:
           node-version: 22
@@ -81,7 +81,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
       SYNC_MODE: "false"
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v4.4.0
         with:
           node-version: 22
@@ -140,7 +140,7 @@ jobs:
       SYNC_MODE: "false"
       QUEUE_MODE: redis
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v4.4.0
         with:
           node-version: 22
