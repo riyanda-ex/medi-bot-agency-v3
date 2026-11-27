@@ -39,7 +39,7 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
-      - run: npm run test:coverage
+      - run: npm run test:ci
       - run: npm run openapi:check
       - run: npm run build
       - run: npm audit --audit-level=high

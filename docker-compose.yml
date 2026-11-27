@@ -44,6 +44,48 @@ services:
       timeout: 5s
       retries: 10
 
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["app"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      QUEUE_MODE: redis
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["app"]
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      QUEUE_MODE: redis
+    command: ["node", "--import", "tsx", "scripts/queue-worker.ts"]
+
 volumes:
   pgdata:
   redisdata:

@@ -19,6 +19,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:ci": "vitest run --coverage",
     "test:watch": "vitest",
     "verify:agents": "tsx scripts/verify-agents.ts",
     "queue:worker": "tsx scripts/queue-worker.ts",
