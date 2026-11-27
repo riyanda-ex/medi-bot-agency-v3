@@ -1,11 +1,8 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
 import { z } from "zod";
-import { authOptions } from "@/lib/auth";
 import { auditApiAccess } from "@/lib/audit";
 import { chatbotReply } from "@/agents/engagement";
-import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestGuard";
+import { createApiContext, deny, guardOrigin, guardRateLimit, ok } from "@/lib/apiRoute";
 
 const bodySchema = z.object({
   message: z.string().min(1).max(500)
@@ -13,25 +10,17 @@ const bodySchema = z.object({
 
 /** Chatbot edukasi terbatas: butuh sesi, rate limited, tidak menjawab diagnosis personal. */
 export async function POST(request: Request): Promise<NextResponse> {
-  const requestId = getRequestId(request);
-  const startedAt = Date.now();
-  void startedAt;
-  const originBlocked = enforceSameOrigin(request);
+  const ctx = await createApiContext(request, "/api/chatbot");
+  const originBlocked = guardOrigin(ctx);
   if (originBlocked) return originBlocked;
 
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id || session.user.invalid) {
-    await auditApiAccess({
-      request,
-      session,
-      action: "CHATBOT_DENIED",
-      detail: "Akses tanpa sesi."
-    });
-    return jsonWithRequestId(requestId, { error: "Autentikasi diperlukan." }, { status: 401 });
+  if (!ctx.session?.user?.id || ctx.sessionInvalid) {
+    return deny(ctx, 401, "Autentikasi diperlukan.", "CHATBOT_DENIED", "Akses tanpa sesi.");
   }
 
-  const limited = await enforceRateLimit(
-    `chatbot:${session.user.id}:${getClientIp(request)}`,
+  const limited = await guardRateLimit(
+    ctx,
+    `chatbot:${ctx.session.user.id}:${ctx.ip}`,
     20,
     60_000
   );
@@ -39,20 +28,23 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return jsonWithRequestId(
-      requestId,
-      { error: "Pesan tidak valid (maksimal 500 karakter)." },
-      { status: 400 }
+    return deny(
+      ctx,
+      400,
+      "Pesan tidak valid (maksimal 500 karakter).",
+      "CHATBOT_INVALID",
+      "Payload chatbot tidak valid."
     );
   }
 
   const reply = chatbotReply(parsed.data.message);
   await auditApiAccess({
-    request,
-    session,
+    request: ctx.request,
+    session: ctx.session,
     action: "CHATBOT_REPLY",
-    detail: "Balasan edukasi generik diberikan (isi pesan tidak disimpan)."
+    detail: "Balasan edukasi generik diberikan (isi pesan tidak disimpan).",
+    requestId: ctx.requestId
   });
 
-  return jsonWithRequestId(requestId, { reply });
+  return ok(ctx, { reply, requestId: ctx.requestId });
 }
