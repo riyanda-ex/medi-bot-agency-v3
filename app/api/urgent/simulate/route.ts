@@ -7,6 +7,7 @@ import { auditApiAccess } from "@/lib/audit";
 import { buildUrgentJobId, enqueueJob } from "@/lib/queue";
 import { prisma } from "@/lib/prisma";
 import { executeUrgentFollowUp } from "@/agents/urgentCaller";
+import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestGuard";
 
 const bodySchema = z
   .object({
@@ -19,18 +20,21 @@ const bodySchema = z
   });
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const originBlocked = enforceSameOrigin(request);
+  if (originBlocked) return originBlocked;
+
   const session = await getServerSession(authOptions);
   const role = session?.user.role ?? "TIDAK_AKTIF";
 
-  if (!hasPermission(role, "triage:write") && !hasPermission(role, "agent:run")) {
-    await auditApiAccess({
-      request,
-      session,
-      action: "URGENT_SIMULATE_DENIED",
-      detail: `Peran ${role} mencoba simulasi panggilan urgent.`
-    });
+  if ((!hasPermission(role, "triage:write") && !hasPermission(role, "agent:run")) || session?.user.invalid) {
+    await auditApiAccess({ request, session, action: "URGENT_SIMULATE_DENIED", detail: `Peran ${role} mencoba simulasi panggilan urgent.` });
     return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
   }
+
+  const limited = enforceRateLimit(`urgent-sim:${session?.user.id ?? getClientIp(request)}`, 20, 60_000);
+  if (limited) return limited;
+
+
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {

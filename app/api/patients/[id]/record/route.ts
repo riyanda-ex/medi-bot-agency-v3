@@ -5,6 +5,7 @@ import { canViewDiagnosis, hasPermission } from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { redactRecordForRole } from "@/agents/securityGuard";
+import { enforceRateLimit, getClientIp } from "@/lib/requestGuard";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -18,15 +19,12 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
   const { id } = await context.params;
 
   if (!hasPermission(role, "patient:read") || session?.user.invalid) {
-    await auditApiAccess({
-      request,
-      session,
-      action: "RECORD_DENIED",
-      targetPatientId: id,
-      detail: `Peran ${role} mencoba membaca rekam medis.`
-    });
+    await auditApiAccess({ request, session, action: "RECORD_DENIED", targetPatientId: id, detail: `Peran ${role} mencoba membaca rekam medis.` });
     return NextResponse.json({ error: "Akses ditolak." }, { status: 403 });
   }
+
+  const limited = enforceRateLimit(`record:${session?.user.id ?? getClientIp(request)}`, 120, 60_000);
+  if (limited) return limited;
 
   const records = await prisma.medicalRecord.findMany({
     where: { patientId: id },

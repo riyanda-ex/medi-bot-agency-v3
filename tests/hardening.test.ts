@@ -122,7 +122,7 @@ describe("Hardening produksi - enkripsi, audit, dan antrean", () => {
     expect(maskPhone("081234567890")).toBe("0812****7890");
   });
 
-  it("IP audit hanya memakai X-Forwarded-For dari proxy tepercaya", () => {
+  it("IP audit mengabaikan header forwarding saat TRUST_PROXY kosong", () => {
     const request = new Request("https://klinik.example/api/patients", {
       headers: {
         "x-real-ip": "203.0.113.9",
@@ -130,9 +130,9 @@ describe("Hardening produksi - enkripsi, audit, dan antrean", () => {
       }
     });
     delete process.env.TRUST_PROXY;
-    expect(getRequestIp(request)).toBe("203.0.113.9");
+    expect(getRequestIp(request)).toBe("unknown");
 
-    process.env.TRUST_PROXY = "203.0.113.9";
+    process.env.TRUST_PROXY = "10.0.0.5";
     expect(getRequestIp(request)).toBe("198.51.100.7");
   });
 

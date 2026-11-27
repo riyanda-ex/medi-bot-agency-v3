@@ -73,6 +73,10 @@ export function assertSecureEnvironment(): EnvironmentCheck {
     if (process.env.REQUIRE_HUMAN_APPROVAL === "false") {
       errors.push("REQUIRE_HUMAN_APPROVAL tidak boleh false di produksi");
     }
+    const nextAuthUrl = process.env.NEXTAUTH_URL ?? "";
+    if (!nextAuthUrl.startsWith("https://")) {
+      errors.push("NEXTAUTH_URL produksi wajib https://");
+    }
   }
 
   if (errors.length > 0) {

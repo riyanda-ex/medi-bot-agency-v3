@@ -1,7 +1,7 @@
 /**
- * Rate limiting sederhana untuk brute-force login.
- * Untuk beberapa instance, ganti Map ini dengan Redis terpusat; antarmukanya
- * sudah dirancang agar pemanggil tidak perlu berubah.
+ * Rate limiting sederhana in-memory per key.
+ * Cocok untuk single-instance/dev. Untuk multi-instance produksi, ganti dengan
+ * store terpusat (Redis) tetapi pertahankan antarmuka yang sama.
  */
 
 interface Bucket {
@@ -17,7 +17,13 @@ export interface RateLimitResult {
   retryAfterSeconds: number;
 }
 
-export function checkRateLimit(key: string, limit: number, windowMs: number, now = Date.now()): RateLimitResult {
+export function checkRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+  now = Date.now()
+): RateLimitResult {
+  pruneRateLimits(now);
   const bucket = buckets.get(key);
   if (!bucket || bucket.resetAt <= now) {
     buckets.set(key, { count: 1, resetAt: now + windowMs });
@@ -41,4 +47,17 @@ export function pruneRateLimits(now = Date.now()): void {
   for (const [key, bucket] of buckets) {
     if (bucket.resetAt <= now) buckets.delete(key);
   }
+}
+
+export function rateLimitResponse(result: RateLimitResult): Response {
+  return Response.json(
+    { error: "Terlalu banyak permintaan. Coba lagi nanti.", retryAfterSeconds: result.retryAfterSeconds },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": String(result.retryAfterSeconds),
+        "Cache-Control": "no-store"
+      }
+    }
+  );
 }

@@ -97,6 +97,8 @@ Keamanan runtime yang aktif:
 - `SYNC_MODE=true`, kunci DEV, seed publik, dan `REQUIRE_HUMAN_APPROVAL=false` ditolak saat produksi.
 - Login dibatasi per IP+email, kegagalan login diaudit tanpa kata sandi, sesi JWT direvalidasi
   terhadap database setiap permintaan.
+- Endpoint API sensitif dilindungi rate limit, cek Origin same-origin untuk mutasi, dan
+  security headers/CSP; respons API disetel `no-store`.
 - Audit log memiliki peran, method, path, user agent, IP, dan tanda tangan HMAC.
 - Job BullMQ ditandatangani HMAC, divalidasi Zod di worker, dan `jobId`-nya deterministik.
 - Path file laporan dibatasi hanya di dalam folder `reports/`.

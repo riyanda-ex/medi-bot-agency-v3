@@ -50,18 +50,19 @@ function cleanIp(value: string | null | undefined): string | null {
 }
 
 /**
- * X-Forwarded-For hanya dipercaya bila permintaan benar-benar datang dari
- * proxy yang ditentukan di TRUST_PROXY. Tanpa konfigurasi, header klien diabaikan.
+ * Header forwarding hanya dipercaya bila TRUST_PROXY dikonfigurasi.
+ * Tanpa TRUST_PROXY, header klien diabaikan untuk mencegah spoofing IP audit/rate-limit.
+ * Saat memakai reverse proxy, set TRUST_PROXY ke IP proxy tepercaya (atau '*'
+ * hanya jika jaringan benar-benar menjamin semua request lewat proxy tepercaya).
  */
 export function getRequestIp(source: Request | HeaderBag): string {
   const headers = source instanceof Request ? source.headers : source;
-  const remote = cleanIp(headerValue(headers, "x-real-ip")) ?? "127.0.0.1";
   const proxies = trustedProxies();
-  const trustAll = proxies.includes("*") || proxies.some((item) => item.toLowerCase() === "true");
-  if (!trustAll && !proxies.includes(remote)) return remote;
+  if (proxies.length === 0) return "unknown";
 
   const forwarded = cleanIp(headerValue(headers, "x-forwarded-for"));
-  return forwarded ?? remote;
+  const realIp = cleanIp(headerValue(headers, "x-real-ip"));
+  return forwarded ?? realIp ?? "unknown";
 }
 
 export async function ensureSystemActor(): Promise<string> {

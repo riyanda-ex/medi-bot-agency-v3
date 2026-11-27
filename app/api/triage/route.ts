@@ -7,6 +7,7 @@ import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { runUrgentTriage } from "@/agents/urgentCaller";
 import { writeAgentLog } from "@/lib/agentLog";
+import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestGuard";
 
 const vitalsSchema = z.object({
   systolic: z.number().int().min(0).max(300).nullable().optional(),
@@ -29,19 +30,22 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const originBlocked = enforceSameOrigin(request);
+  if (originBlocked) return originBlocked;
+
   const startedAt = Date.now();
   const session = await getServerSession(authOptions);
   const role = session?.user.role ?? "TIDAK_AKTIF";
 
-  if (!hasPermission(role, "triage:write")) {
-    await auditApiAccess({
-      request,
-      session,
-      action: "TRIAGE_DENIED",
-      detail: `Peran ${role} mencoba melakukan triage.`
-    });
+  if (!hasPermission(role, "triage:write") || session?.user.invalid) {
+    await auditApiAccess({ request, session, action: "TRIAGE_DENIED", detail: `Peran ${role} mencoba melakukan triage.` });
     return NextResponse.json({ error: "Akses ditolak: peran Anda tidak boleh melakukan triage." }, { status: 403 });
   }
+
+  const limited = enforceRateLimit(`triage:${session?.user.id ?? getClientIp(request)}`, 60, 60_000);
+  if (limited) return limited;
+
+
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
