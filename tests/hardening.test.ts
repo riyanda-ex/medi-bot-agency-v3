@@ -222,8 +222,8 @@ describe("Hardening produksi - enkripsi, audit, dan antrean", () => {
     delete process.env.NEXT_PHASE;
     process.env.NEXTAUTH_SECRET = "a".repeat(48);
     process.env.FIELD_ENCRYPTION_KEY = "b".repeat(48);
+    process.env.APP_SIGNING_KEY = "c".repeat(48);
     delete process.env.AUTH_SECRET;
-    delete process.env.APP_SIGNING_KEY;
     process.env.NEXTAUTH_URL = "https://klinik.example";
     process.env.SYNC_MODE = "false";
     process.env.REQUIRE_HUMAN_APPROVAL = "true";
@@ -240,13 +240,29 @@ describe("Hardening produksi - enkripsi, audit, dan antrean", () => {
     expect(() => assertSecureEnvironment()).not.toThrow();
   });
 
+  it("produksi menolak APP_SIGNING_KEY yang tidak ada", () => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    delete process.env.NEXT_PHASE;
+    process.env.NEXTAUTH_SECRET = "a".repeat(48);
+    process.env.FIELD_ENCRYPTION_KEY = "b".repeat(48);
+    delete process.env.APP_SIGNING_KEY;
+    process.env.NEXTAUTH_URL = "https://klinik.example";
+    process.env.SYNC_MODE = "false";
+    process.env.REQUIRE_HUMAN_APPROVAL = "true";
+    process.env.RATE_LIMIT_MODE = "redis";
+    process.env.REDIS_URL = "redis://localhost:6379";
+    delete process.env.CI;
+    delete process.env.GITHUB_ACTIONS;
+    expect(() => assertSecureEnvironment()).toThrow(/APP_SIGNING_KEY wajib/);
+  });
+
   it("denylist secret CI tetap menolak nilai yang cukup panjang", () => {
     (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     delete process.env.NEXT_PHASE;
     process.env.NEXTAUTH_SECRET = "ci-runner-token-abcdefghijklmnop";
     process.env.FIELD_ENCRYPTION_KEY = "b".repeat(48);
+    process.env.APP_SIGNING_KEY = "c".repeat(48);
     delete process.env.AUTH_SECRET;
-    delete process.env.APP_SIGNING_KEY;
     process.env.NEXTAUTH_URL = "https://klinik.example";
     process.env.SYNC_MODE = "false";
     process.env.REQUIRE_HUMAN_APPROVAL = "true";

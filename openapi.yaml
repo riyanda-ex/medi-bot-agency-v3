@@ -3,9 +3,11 @@ info:
   title: MediBot Clinical Operations Platform API
   version: 0.1.0
   description: |
-    Internal API summary for MediBot Clinical Operations Platform. Every endpoint is
-    protected by server-side session validation, RBAC, request IDs, audit logging and
-    (for state-changing requests) same-origin/CSRF enforcement. PHI is redacted per role.
+    Internal API summary for MediBot Clinical Operations Platform. Authenticated endpoints
+    use server-side session validation, RBAC, request IDs, audit logging and (for state-changing
+    requests) same-origin/CSRF enforcement; PHI is redacted per role. Public exceptions are
+    health, readiness, NextAuth, forgot/reset-password and the METRICS_TOKEN-gated metrics
+    endpoint.
 servers:
   - url: http://localhost:3000
 security:
@@ -16,6 +18,11 @@ components:
       type: apiKey
       in: cookie
       name: authjs.session-token
+      description: HTTPS deployments use the prefixed name __Secure-authjs.session-token.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: METRICS_TOKEN, used only by the Prometheus scraper.
   schemas:
     Error:
       type: object
@@ -28,6 +35,7 @@ components:
         status: { type: string }
         service: { type: string }
         timestamp: { type: string, format: date-time }
+        requestId: { type: string }
     Ready:
       type: object
       properties:
@@ -48,6 +56,29 @@ components:
         consentAt: { type: string, format: date-time, nullable: true }
         consentRevokedAt: { type: string, format: date-time, nullable: true }
         retentionUntil: { type: string, format: date-time, nullable: true }
+        legalHold: { type: boolean }
+        dsrSlaHours: { type: integer, enum: [72] }
+    DataSubjectRequest:
+      type: object
+      properties:
+        id: { type: string }
+        patientId: { type: string }
+        type:
+          type: string
+          enum: [ACCESS, COPY, RECTIFICATION, CONSENT_WITHDRAWAL, DELETION]
+        status:
+          type: string
+          enum: [PENDING, IN_PROGRESS, APPROVED, COMPLETED, REJECTED]
+        requestedAt: { type: string, format: date-time }
+        dueAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+        notes: { type: string, nullable: true }
+        slaHours: { type: integer, enum: [72] }
+    MfaStatus:
+      type: object
+      properties:
+        mfaEnabled: { type: boolean }
+        recoveryCodesRemaining: { type: integer, minimum: 0, maximum: 6 }
     PhiAuditEntry:
       type: object
       properties:
@@ -72,6 +103,38 @@ paths:
       security: []
       responses:
         "200": { description: Authentication result }
+  /api/auth/forgot-password:
+    post:
+      summary: Request a single-use reset link (200 for known/unknown emails; guards may return 403/429)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 200 }
+      responses:
+        "200": { description: Request accepted }
+  /api/auth/reset-password:
+    post:
+      summary: Exchange a reset token for a new password and revoke old sessions
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string, minLength: 20, maxLength: 200 }
+                password: { type: string, minLength: 12, maxLength: 200 }
+      responses:
+        "200": { description: Password updated }
+        "400": { description: Invalid/expired token or weak password }
   /api/health:
     get:
       summary: Liveness check
@@ -84,7 +147,7 @@ paths:
               schema: { $ref: "#/components/schemas/Health" }
   /api/ready:
     get:
-      summary: Readiness check (database, Redis, migrations, secrets)
+      summary: Readiness check (database and Redis connectivity)
       security: []
       responses:
         "200":
@@ -155,11 +218,102 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Consent" }
         "403": { description: Forbidden }
+  /api/me/privacy-requests:
+    get:
+      summary: List the current patient's data-subject requests (72 h SLA)
+      responses:
+        "200":
+          description: Tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requests:
+                    type: array
+                    items: { $ref: "#/components/schemas/DataSubjectRequest" }
+        "403": { description: Forbidden }
+    post:
+      summary: Open a data-subject request (ACCESS/COPY/RECTIFICATION/DELETION)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { type: string, enum: [ACCESS, COPY, RECTIFICATION, DELETION] }
+                notes: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        "201":
+          description: Ticket created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataSubjectRequest" }
+        "409": { description: Duplicate open ticket }
+  /api/me/mfa:
+    get:
+      summary: Read MFA status for the current user
+      responses:
+        "200":
+          description: MFA status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MfaStatus" }
+    post:
+      summary: Begin, enable, or disable TOTP MFA (secret and recovery codes are server-held)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [action]
+                  properties:
+                    action: { type: string, enum: [BEGIN] }
+                - type: object
+                  required: [action, code]
+                  properties:
+                    action: { type: string, enum: [ENABLE] }
+                    code: { type: string, pattern: "^[0-9]{6}$" }
+                - type: object
+                  required: [action, code]
+                  properties:
+                    action: { type: string, enum: [DISABLE] }
+                    code: { type: string, minLength: 6, maxLength: 64 }
+      responses:
+        "200": { description: MFA state updated }
+        "400": { description: Invalid code or body }
+        "409": { description: Setup expired, conflict, or MFA already enabled }
   /api/patients:
     get:
-      summary: List patients (masked identifiers, role-redacted)
+      summary: List patients (masked identifiers, role-redacted, cursor pagination)
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: string, maxLength: 64 }
       responses:
-        "200": { description: Patient list }
+        "200":
+          description: Cursor-paginated patient list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [patients, requestId]
+                properties:
+                  patients:
+                    type: array
+                    items: { type: object }
+                  limit: { type: integer, minimum: 1, maximum: 100 }
+                  nextCursor: { type: string, nullable: true }
+                  requestId: { type: string }
         "403": { description: Forbidden }
   /api/patients/{id}/record:
     get:
@@ -174,7 +328,7 @@ paths:
         "403": { description: Forbidden }
   /api/patients/{id}/privacy:
     delete:
-      summary: Soft-delete/anonymize a patient record after consent revocation or retention expiry
+      summary: "Anonymize a patient record only after consent revocation AND retention expiry, with an APPROVED DELETION ticket"
       parameters:
         - in: path
           name: id
@@ -196,8 +350,50 @@ paths:
                 reason: { type: string, minLength: 5, maxLength: 200 }
       responses:
         "200": { description: Patient anonymized }
-        "400": { description: Confirmation mismatch or retention not satisfied }
+        "400":
+          { description: Confirmation mismatch or retention/consent preconditions not satisfied }
         "403": { description: Forbidden }
+        "404": { description: Patient not found }
+        "409": { description: Legal hold active or no APPROVED DELETION ticket }
+  /api/privacy-requests/{id}:
+    get:
+      summary: ADMIN reads a data-subject ticket
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: Ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataSubjectRequest" }
+        "403": { description: Forbidden }
+    patch:
+      summary: ADMIN verifies, approves, rejects, or closes a ticket
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, maxLength: 64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [IN_PROGRESS, APPROVED, COMPLETED, REJECTED] }
+                notes: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        "200":
+          description: Updated ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataSubjectRequest" }
+        "409": { description: Ticket already closed }
   /api/triage:
     post:
       summary: Evaluate triage and persist a triage log
@@ -213,10 +409,44 @@ paths:
         "403": { description: Forbidden }
   /api/urgent/approve:
     post:
-      summary: Create or verify an outbound communication approval
+      summary: "Grant (single-use, 30-minute approval) or deny an outbound communication"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, resourceId]
+              properties:
+                scope: { type: string, enum: [URGENT, REPORT] }
+                resourceId: { type: string, maxLength: 64 }
+                channels:
+                  type: array
+                  maxItems: 4
+                  items: { type: string, enum: [WHATSAPP, CALL, EMAIL, ESCALATION] }
+                decision: { type: string, enum: [GRANT, DENY], default: GRANT }
+                reason: { type: string, minLength: 5, maxLength: 200 }
       responses:
-        "200": { description: Approval created }
+        "200":
+          description: Approval granted, or denial recorded with denied=true
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requestId]
+                properties:
+                  id: { type: string }
+                  scope: { type: string, enum: [URGENT, REPORT] }
+                  resourceId: { type: string }
+                  denied: { type: boolean }
+                  channels:
+                    type: array
+                    items: { type: string, enum: [WHATSAPP, CALL, EMAIL, ESCALATION] }
+                  expiresAt: { type: string, format: date-time }
+                  requestId: { type: string }
+        "400": { description: Invalid body }
         "403": { description: Forbidden }
+        "404": { description: Triage log not found }
   /api/reports/generate:
     post:
       summary: "Generate daily report (status lifecycle PENDING/GENERATED/SENT/FAILED/EXPIRED)"
@@ -246,14 +476,25 @@ paths:
           name: limit
           required: false
           schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: string, maxLength: 64 }
       responses:
         "200":
-          description: Audit entries
+          description: Audit entries with cursor pagination
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: "#/components/schemas/PhiAuditEntry" }
+                type: object
+                required: [entries, limit, requestId]
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/PhiAuditEntry" }
+                  limit: { type: integer, minimum: 1, maximum: 100 }
+                  nextCursor: { type: string, nullable: true }
+                  requestId: { type: string }
         "403": { description: Forbidden }
   /api/orchestrator/run:
     post:
@@ -262,3 +503,37 @@ paths:
         "200": { description: Run result }
         "202": { description: Queued }
         "403": { description: Forbidden }
+  /api/admin/users/{id}:
+    patch:
+      summary: ADMIN deactivates an account or revokes sessions (MFA setup is self-service only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, maxLength: 64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                status: { type: string, enum: [AKTIF, TIDAK_AKTIF] }
+                revokeSessions: { type: boolean }
+      responses:
+        "200": { description: Updated account }
+        "400": { description: Self-lockout or invalid body }
+        "403": { description: Forbidden }
+  /api/metrics:
+    get:
+      summary: Prometheus text exposition (no PHI; METRICS_TOKEN bearer required)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema: { type: string }
+        "404": { description: Disabled or unauthorized }

@@ -43,7 +43,9 @@ MediBot Clinical Operations Platform is a Next.js App Router system that orchest
 - **Urgent triage workflow**: rule-based RED/YELLOW/GREEN evaluation with audit logging and simulated outbound follow-up.
 - **Human approval gate**: real outbound actions require explicit DOKTER/ADMIN approval (HMAC-signed, 30-minute TTL).
 - **Auditability**: signed audit records for API access, denials, approvals, and critical actions.
-- **Reporting**: PDF/Excel daily reports with download containment under `reports/`.
+- **Reporting**: PDF/Excel daily reports with streaming downloads and containment under `reports/`.
+- **Privacy & account controls**: TOTP MFA, single-use reset links, 25-year clinical retention,
+  data-subject tickets with a 72 h SLA, legal hold, and admin session revocation.
 - **Safe defaults**: mock WhatsApp/phone/email providers, no real keys in repo, outbound disabled by default.
 
 ## Security Posture
@@ -58,6 +60,12 @@ Implemented controls:
 - Security headers/CSP via `next.config.mjs` and protected-route proxy headers.
 - Signed/Zod-validated queue jobs; Redis production checks for password/TLS on public hosts.
 - Production env guards reject placeholder/DEV/CI secrets, `SYNC_MODE=true`, and disabled human approval.
+- Consent for patient-directed WhatsApp/phone follow-up is re-checked at execution (`agents/urgentCaller.ts`);
+  staff report email is gated by approval only (`agents/reporter.ts`), not by patient consent.
+  Approvals are single-use and denials are audited.
+- Audit signatures are verified with `npm run audit:verify`; routine production retention never
+  bulk-deletes audit rows (the destructive dev/test seed is the documented exception).
+- Metrics are exposed only with a separate `METRICS_TOKEN`; no PHI is present in metrics.
 
 > No system can be guaranteed “unhackable”. Before real clinical deployment, complete the [Production Checklist](docs/PRODUCTION-CHECKLIST.md), external penetration testing, and legal/compliance review.
 
@@ -110,26 +118,51 @@ Open `http://localhost:3000`.
 
 ## Available Scripts
 
-| Command                      | Description                                                 |
-| ---------------------------- | ----------------------------------------------------------- |
-| `npm run dev`                | Start Next.js development server.                           |
-| `npm run build`              | Create production build.                                    |
-| `npm run start`              | Start production server.                                    |
-| `npm run typecheck`          | Run TypeScript checks (TS6 alias).                          |
-| `npm run typecheck:7`        | Run TS7 native compiler check.                              |
-| `npm test`                   | Run Vitest suite.                                           |
-| `npm run verify:all`         | lint, format, both typechecks, tests, build, OpenAPI check. |
-| `npm run db:setup`           | Generate Prisma client, push SQLite schema, seed dev data.  |
-| `npm run db:migrate:deploy`  | Apply SQLite initial migration (fresh DB).                  |
-| `npm run db:studio`          | Open Prisma Studio.                                         |
-| `npm run prisma:generate:pg` | Generate PostgreSQL Prisma schema/client.                   |
-| `npm run db:setup:pg`        | Push + seed PostgreSQL (requires `DATABASE_URL`).           |
-| `npm run db:backup:pg`       | `pg_dump` backup with retention pruning.                    |
-| `npm run db:restore:pg`      | Confirmation-gated `pg_restore` (see docs).                 |
-| `npm run queue:worker`       | Run BullMQ worker (requires `QUEUE_MODE=redis`).            |
-| `npm run verify:agents`      | Smoke-test agents and DB.                                   |
-| `npm run e2e`                | Run HTTP E2E checks against running server.                 |
-| `npm run queue:check`        | Verify Redis queue returns 202 + `jobId`.                   |
+Complete script list (source: [`package.json`](package.json)):
+
+| Command                        | Description                                                               |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `npm run dev`                  | Start Next.js development server.                                         |
+| `npm run build`                | Create production build.                                                  |
+| `npm run prestart`             | Prepare standalone output (lifecycle hook for `start`).                   |
+| `npm run start`                | Start production server from `.next/standalone`.                          |
+| `npm run typecheck`            | Run TypeScript checks (TS6 alias).                                        |
+| `npm run typecheck:7`          | Run TS7 native compiler check.                                            |
+| `npm run test`                 | Run Vitest suite (`npm test` is equivalent).                              |
+| `npm run test:ci`              | Run Vitest with coverage in CI.                                           |
+| `npm run test:watch`           | Run Vitest in watch mode.                                                 |
+| `npm run verify:agents`        | Smoke-test agents and DB.                                                 |
+| `npm run queue:worker`         | Run BullMQ worker (requires `QUEUE_MODE=redis`).                          |
+| `npm run e2e`                  | Run HTTP E2E checks against a running server.                             |
+| `npm run queue:check`          | Verify Redis queue returns 202 + `jobId`.                                 |
+| `npm run queue:replay`         | List/replay failed BullMQ jobs from the DLQ (`--list` or `<jobId>`).      |
+| `npm run prisma:generate`      | Generate Prisma client from the SQLite schema.                            |
+| `npm run prisma:generate:pg`   | Sync PostgreSQL schema and generate its Prisma client.                    |
+| `npm run db:push`              | Push SQLite schema (local dev only).                                      |
+| `npm run db:migrate:dev`       | Create/apply an SQLite development migration.                             |
+| `npm run db:migrate:deploy`    | Apply SQLite migrations (fresh DB).                                       |
+| `npm run db:migrate:deploy:pg` | Apply PostgreSQL migrations via `prisma/postgres.config.ts` (production). |
+| `npm run db:backup:pg`         | `pg_dump` backup with retention pruning.                                  |
+| `npm run db:restore:pg`        | Confirmation-gated `pg_restore` (see docs).                               |
+| `npm run audit:verify`         | Verify HMAC signatures of persisted audit rows.                           |
+| `npm run retention:sweep`      | Realign 25-year retention and report overdue DSR tickets.                 |
+| `npm run perf:check`           | Smoke load test with p95/error-rate SLO.                                  |
+| `npm run db:seed`              | Seed dev/test data (destructive; guarded by env flags).                   |
+| `npm run db:setup`             | `prisma:generate` + `db:push` + `db:seed` (dev only).                     |
+| `npm run db:push:pg`           | Push PostgreSQL schema (dev/test only; never production).                 |
+| `npm run db:setup:pg`          | `prisma:generate:pg` + `db:push:pg` + `db:seed` (dev/test only).          |
+| `npm run db:studio`            | Open Prisma Studio.                                                       |
+| `npm run postinstall`          | Generate Prisma client automatically after install (lifecycle hook).      |
+| `npm run lint`                 | Run ESLint.                                                               |
+| `npm run lint:fix`             | Run ESLint with `--fix`.                                                  |
+| `npm run format`               | Run Prettier write.                                                       |
+| `npm run format:check`         | Check Prettier formatting.                                                |
+| `npm run test:coverage`        | Run Vitest with coverage.                                                 |
+| `npm run openapi:check`        | Validate `openapi.yaml` via `scripts/check-openapi.mjs`.                  |
+| `npm run verify:all`           | lint, format, both typechecks, tests, audit verify, build, OpenAPI check. |
+
+Production deploys use migrations (`npm run db:migrate:deploy:pg` or the compose `migrate` service).
+Do **not** use `prisma db push` or `npm run db:setup:pg` on production data.
 
 ## Project Structure
 
@@ -163,6 +196,8 @@ Copy `.env.example` to `.env`. Key variables:
 | `TRUST_PROXY`            | empty        | Trusted proxy IPs for forwarded client IP.                 |
 | `SYNC_MODE`              | `true` (dev) | Must be `false` in production.                             |
 | `RATE_LIMIT_MODE`        | `auto`       | Must be `redis` in production.                             |
+| `APP_SIGNING_KEY`        | empty        | Required in production; independent HMAC signing key.      |
+| `METRICS_TOKEN`          | empty        | Bearer token for `/api/metrics`; empty disables endpoint.  |
 | `ALLOW_DESTRUCTIVE_SEED` | `1` (dev)    | Required for seed deletes; never set in production.        |
 | `SEED_ADMIN_PASSWORD`    | dev default  | Password for seeded test users; random if omitted locally. |
 
@@ -182,8 +217,9 @@ docker compose --profile app up -d
 ```
 
 The app healthcheck uses `/api/ready`. For a host-managed deployment, deploy migrations with
-`npx prisma migrate deploy --config prisma/postgres.config.ts`, then build and start the server and
-worker separately. `QUEUE_MODE=redis` returns HTTP 202 + `jobId` for queued work.
+`npm run db:migrate:deploy:pg` (`npx prisma migrate deploy --config prisma/postgres.config.ts`),
+then build and start the server and worker separately. Never use `prisma db push`/`db:setup:pg` on
+production data. `QUEUE_MODE=redis` returns HTTP 202 + `jobId` for queued work.
 
 ## Documentation
 
@@ -192,6 +228,8 @@ worker separately. `QUEUE_MODE=redis` returns HTTP 202 + `jobId` for queued work
 - [`docs/STRUCTURE.md`](docs/STRUCTURE.md) — repository layout and placement rules.
 - [`docs/PRIVACY-DATA-HANDLING.md`](docs/PRIVACY-DATA-HANDLING.md) — PDP, consent, retention, key rotation.
 - [`docs/DATA-LIFECYCLE.md`](docs/DATA-LIFECYCLE.md) — consent/deletion state machine and backups.
+- [`docs/STAFF-GUIDE.md`](docs/STAFF-GUIDE.md) — non-technical daily guide for clinic staff.
+- [`docs/SOP-KLINIK.md`](docs/SOP-KLINIK.md) — signable clinic SOP draft (signature required).
 - [`docs/EXTERNAL-INFRA.md`](docs/EXTERNAL-INFRA.md) — KMS, HA, SIEM/WORM, secret manager references.
 - [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md) — deployment hardening checklist.
 - [`TESTING.md`](TESTING.md) — testing protocol.

@@ -180,7 +180,8 @@ export async function auditApiAccess(input: ApiAuditInput): Promise<void> {
 export async function recordAuthFailure(input: {
   email: string;
   ip: string;
-  reason: "RATE_LIMITED" | "INVALID_CREDENTIALS" | "ACCOUNT_INACTIVE";
+  reason:
+    "RATE_LIMITED" | "INVALID_CREDENTIALS" | "ACCOUNT_INACTIVE" | "MFA_REQUIRED" | "MFA_INVALID";
 }): Promise<void> {
   try {
     const actorId = await ensureSystemActor();

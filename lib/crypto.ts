@@ -159,7 +159,14 @@ function appSigningKey(): Buffer | null {
 }
 
 function signingKey(): Buffer {
-  return appSigningKey() ?? legacySigningKey();
+  const dedicated = appSigningKey();
+  if (dedicated) return dedicated;
+  // Fallback HMAC lama hanya untuk pengembangan. Agent/cron tidak memeanggil
+  // assertSecureEnvironment(), jadi produksi harus fail-closed di sini.
+  if (isProductionRuntime()) {
+    throw new Error("APP_SIGNING_KEY wajib di produksi untuk tanda tangan audit/approval.");
+  }
+  return legacySigningKey();
 }
 
 function hmacKey(): Buffer {

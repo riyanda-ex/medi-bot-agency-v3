@@ -13,6 +13,7 @@ import {
 } from "@/lib/apiRoute";
 import { encryptPhi, fieldHash } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
+import { canAnonymizePatient } from "@/lib/privacy";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -69,6 +70,7 @@ export async function DELETE(request: Request, context: RouteContext): Promise<N
         consentStatus: true,
         consentRevokedAt: true,
         retentionUntil: true,
+        legalHold: true,
         deletedAt: true
       }
     })
@@ -77,15 +79,33 @@ export async function DELETE(request: Request, context: RouteContext): Promise<N
   if (patient.deletedAt) {
     return deny(ctx, 409, "Data pasien sudah dianonimisasi.", "PRIVACY_ALREADY_DELETED");
   }
-
-  const revoked = patient.consentStatus === "REVOKED" || Boolean(patient.consentRevokedAt);
-  const retentionExpired = Boolean(patient.retentionUntil && patient.retentionUntil <= new Date());
-  if (!revoked && !retentionExpired) {
+  if (!canAnonymizePatient(patient)) {
     return deny(
       ctx,
       400,
-      "Persetujuan belum dicabut atau masa retensi belum berakhir.",
+      "Legal hold aktif, consent belum dicabut, atau retensi klinis 25 tahun belum berakhir.",
       "PRIVACY_PRECONDITION_FAILED"
+    );
+  }
+
+  // Pemusnahan tanpa tiket terverifikasi tidak boleh terjadi. Tiket dibuat oleh
+  // pasien, diverifikasi ADMIN, lalu dieksekusi di sini.
+  const ticket = await prisma.dataSubjectRequest
+    .findFirst({
+      where: {
+        patientId,
+        type: "DELETION",
+        status: "APPROVED"
+      },
+      orderBy: { requestedAt: "desc" }
+    })
+    .catch(() => null);
+  if (!ticket || ticket.status !== "APPROVED") {
+    return deny(
+      ctx,
+      409,
+      "Tiket permintaan penghapusan belum diverifikasi ADMIN.",
+      "PRIVACY_TICKET_MISSING"
     );
   }
 
@@ -110,28 +130,16 @@ export async function DELETE(request: Request, context: RouteContext): Promise<N
         anonymizedAt: now
       }
     }),
-    prisma.medicalRecord.updateMany({
-      where: { patientId },
+    // Fakta klinis sengaja dipertahankan sesuai Permenkes: yang dihapus adalah
+    // identitas penghubung, bukan anamnesis/diagnosis/laboratorium/resep.
+    prisma.dataSubjectRequest.updateMany({
+      where: { patientId, type: "DELETION", status: "APPROVED" },
       data: {
-        anamnesis: null,
-        diagnosisIcd10: null,
-        actionIcd9: null,
-        radiology: null,
-        vitalSigns: null,
-        note: null
+        status: "COMPLETED",
+        completedAt: now,
+        openKey: null,
+        notes: "Anonimisasi identitas selesai."
       }
-    }),
-    prisma.visit.updateMany({
-      where: { patientId },
-      data: { complaint: null, diagnosis: null, icd10: null, icd9: null }
-    }),
-    prisma.labResult.updateMany({
-      where: { patientId },
-      data: { value: null, referenceRange: null }
-    }),
-    prisma.prescription.updateMany({
-      where: { patientId },
-      data: { medication: "[DIHAPUS]", dose: null, frequency: null }
     })
   ]);
 

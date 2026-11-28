@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { createReadStream } from "node:fs";
 import { promises as fs } from "node:fs";
+import { Readable } from "node:stream";
 import path from "node:path";
 import { auth } from "@/auth";
 import { hasPermission } from "@/lib/rbac";
@@ -10,6 +12,7 @@ import { resolveReportPath } from "@/lib/reportFiles";
 import { getRequestId, withRequestId } from "@/lib/requestContext";
 import { reportIdSchema } from "@/lib/apiRoute";
 import { logApiRequest } from "@/lib/apiLog";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: Request): Promise<NextResponse> {
   const requestId = getRequestId(request);
@@ -55,13 +58,25 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   try {
-    const buffer = await fs.readFile(safePath);
+    const stat = await fs.stat(safePath);
+    const fileStream = createReadStream(safePath);
+    // Setelah header dikirim, error baca tidak bisa mengubah status respons;
+    // setidaknya tercatat sebagai insiden operasional.
+    fileStream.on("error", (error: Error) => {
+      logger.error("report.download_stream_error", { error: error.message.slice(0, 300) });
+    });
+    const stream = Readable.toWeb(fileStream) as ReadableStream;
     const filename = path.basename(safePath);
     const contentType = format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     await auditApiAccess({ request, session, action: "REPORT_DOWNLOAD", detail: `Laporan ${reportId} format ${format}.`, requestId });
     log(200);
-    return withRequestId(new NextResponse(buffer, {
-      headers: { "Content-Type": contentType, "Content-Disposition": `attachment; filename="${filename}"`, "Cache-Control": "no-store" }
+    return withRequestId(new NextResponse(stream, {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Length": String(stat.size),
+        "Cache-Control": "no-store"
+      }
     }), requestId);
   } catch {
     log(404, "disk_missing");

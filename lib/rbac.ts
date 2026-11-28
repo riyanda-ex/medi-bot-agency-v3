@@ -26,7 +26,8 @@ export const PERMISSIONS: Record<Role, readonly string[]> = {
     "appointment:read",
     "appointment:write",
     "agent:run",
-    "outbound:approve"
+    "outbound:approve",
+    "user:manage"
   ],
   DOKTER: [
     "patient:read",

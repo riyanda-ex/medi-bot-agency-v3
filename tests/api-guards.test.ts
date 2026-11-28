@@ -196,6 +196,29 @@ describe("API guard behavior", () => {
     expect(body.status).toBe("ok");
   });
 
+  it("penolakan tercatat dengan kunci scope/resource yang dapat dicabut", async () => {
+    session("DOKTER");
+    const req = new Request("http://localhost/api/urgent/approve", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        scope: "URGENT",
+        resourceId: "t1",
+        channels: ["WHATSAPP"],
+        decision: "DENY",
+        reason: "Data belum dikonfirmasi"
+      })
+    });
+    const res = await approvePost(req);
+    expect(res.status).toBe(200);
+    expect(mockAuditApiAccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "OUTBOUND_APPROVAL_DENIED_BY_APPROVER",
+        detail: "URGENT|t1|Data belum dikonfirmasi"
+      })
+    );
+  });
+
   it("verifyApproval mengembalikan channels dari rekam bertanda tangan", async () => {
     const record = {
       approvalId: "apr-test",
@@ -216,5 +239,30 @@ describe("API guard behavior", () => {
     const result = await verifyApproval("apr-test", "URGENT", "t1");
     expect(result.ok).toBe(true);
     expect(result.channels).toEqual(["WHATSAPP", "CALL"]);
+  });
+
+  it("verifyApproval menolak approval yang sudah dicabut penolakan berikutnya", async () => {
+    const record = {
+      approvalId: "apr-test",
+      scope: "URGENT" as const,
+      resourceId: "t1",
+      approverId: "u1",
+      role: "DOKTER",
+      channels: ["WHATSAPP"],
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    };
+    const canonical = approvalCanonicalPayload(record);
+    mockApprovalFindFirst
+      .mockResolvedValueOnce({
+        detail: canonical,
+        signature: signPayload(canonical),
+        createdAt: new Date("2026-11-28T00:00:00Z")
+      })
+      .mockResolvedValueOnce({ id: "denial-1" });
+
+    const result = await verifyApproval("apr-test", "URGENT", "t1");
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/dicabut/);
+    expect(mockUserFindUnique).not.toHaveBeenCalled();
   });
 });

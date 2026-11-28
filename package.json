@@ -29,6 +29,7 @@
     "queue:worker": "tsx scripts/queue-worker.ts",
     "e2e": "node scripts/e2e-check.mjs",
     "queue:check": "node scripts/queue-check.mjs",
+    "queue:replay": "tsx scripts/queue-replay.ts",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:generate:pg": "node scripts/sync-postgres-schema.mjs && prisma generate --schema prisma/schema.postgres.prisma",
     "db:push": "prisma db push --schema prisma/schema.prisma",
@@ -37,6 +38,9 @@
     "db:migrate:deploy:pg": "prisma migrate deploy --config prisma/postgres.config.ts",
     "db:backup:pg": "node scripts/backup-postgres.mjs",
     "db:restore:pg": "node scripts/restore-postgres.mjs",
+    "audit:verify": "tsx scripts/verify-audit.ts",
+    "retention:sweep": "tsx scripts/retention-sweep.ts",
+    "perf:check": "node scripts/load-check.mjs",
     "db:seed": "tsx prisma/seed.ts",
     "db:setup": "npm run prisma:generate && npm run db:push && npm run db:seed",
     "db:push:pg": "prisma db push --config prisma/postgres.config.ts",
@@ -49,7 +53,7 @@
     "format:check": "prettier --check .",
     "test:coverage": "vitest run --coverage",
     "openapi:check": "node scripts/check-openapi.mjs",
-    "verify:all": "npm run lint && npm run format:check && npm run typecheck && npm run typecheck:7 && npm run test && npm run build && npm run openapi:check"
+    "verify:all": "npm run lint && npm run format:check && npm run typecheck && npm run typecheck:7 && npm run test && npm run audit:verify && npm run build && npm run openapi:check"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "8.1.0-dev.12",

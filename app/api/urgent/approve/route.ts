@@ -8,7 +8,7 @@ import {
   type Role
 } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { createApproval, type ApprovalScope } from "@/lib/approval";
+import { approvalDenialDetail, createApproval, type ApprovalScope } from "@/lib/approval";
 import {
   createApiContext,
   deny,
@@ -21,14 +21,25 @@ import {
 } from "@/lib/apiRoute";
 import { auditApiAccess } from "@/lib/audit";
 
-const bodySchema = z.object({
-  scope: z.enum(["URGENT", "REPORT"]),
-  resourceId: z.union([triageLogIdSchema, reportIdSchema]),
-  channels: z
-    .array(z.enum(["WHATSAPP", "CALL", "EMAIL", "ESCALATION"]))
-    .min(1)
-    .max(4)
-});
+const bodySchema = z
+  .object({
+    scope: z.enum(["URGENT", "REPORT"]),
+    resourceId: z.union([triageLogIdSchema, reportIdSchema]),
+    channels: z
+      .array(z.enum(["WHATSAPP", "CALL", "EMAIL", "ESCALATION"]))
+      .max(4)
+      .default([]),
+    decision: z.enum(["GRANT", "DENY"]).default("GRANT"),
+    reason: z.string().trim().min(5).max(200).optional()
+  })
+  .refine((value) => value.decision !== "DENY" || Boolean(value.reason), {
+    message: "Penolakan wajib disertai alasan.",
+    path: ["reason"]
+  })
+  .refine((value) => value.decision !== "GRANT" || value.channels.length > 0, {
+    message: "Minimal satu kanal wajib dipilih.",
+    path: ["channels"]
+  });
 
 export async function POST(request: Request): Promise<NextResponse> {
   const ctx = await createApiContext(request, "/api/urgent/approve");
@@ -49,10 +60,12 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (tooLarge) return tooLarge;
   const parsed = bodySchema.safeParse(await ctx.request.json().catch(() => null));
   if (!parsed.success) return deny(ctx, 400, "Data tidak valid.", "OUTBOUND_APPROVAL_INVALID");
-  const { scope, resourceId, channels } = parsed.data as {
+  const { scope, resourceId, channels, decision, reason } = parsed.data as {
     scope: ApprovalScope;
     resourceId: string;
     channels: string[];
+    decision: "GRANT" | "DENY";
+    reason?: string;
   };
   if (scope === "URGENT") {
     const log = await prisma.triageLog.findUnique({
@@ -86,6 +99,17 @@ export async function POST(request: Request): Promise<NextResponse> {
       "Akses ditolak: approval laporan butuh izin report:read.",
       "OUTBOUND_APPROVAL_DENIED"
     );
+  }
+
+  if (decision === "DENY") {
+    await auditApiAccess({
+      request: ctx.request,
+      session: ctx.session,
+      action: "OUTBOUND_APPROVAL_DENIED_BY_APPROVER",
+      detail: approvalDenialDetail(scope, resourceId, reason ?? "Ditolak"),
+      requestId: ctx.requestId
+    });
+    return ok(ctx, { denied: true, scope, resourceId, requestId: ctx.requestId });
   }
 
   const approval = await createApproval({

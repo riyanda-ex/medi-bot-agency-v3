@@ -147,12 +147,12 @@ export function assertSecureEnvironment(): EnvironmentCheck {
     }
     const appSigningKey = process.env.APP_SIGNING_KEY;
     const fieldKey = process.env.FIELD_ENCRYPTION_KEY;
-    if (appSigningKey) {
-      const sameSecret =
-        appSigningKey.trim() === fieldKey?.trim() || appSigningKey.trim() === authSecret?.trim();
-      if (!isProductionSecret(appSigningKey) || sameSecret) {
-        errors.push("APP_SIGNING_KEY harus acak, berbeda dari auth/field key, dan minimal 32 byte");
-      }
+    const sameSecret =
+      appSigningKey?.trim() === fieldKey?.trim() || appSigningKey?.trim() === authSecret?.trim();
+    if (!appSigningKey || !isProductionSecret(appSigningKey) || sameSecret) {
+      errors.push(
+        "APP_SIGNING_KEY wajib di produksi: acak, berbeda dari auth/field key, dan minimal 32 byte"
+      );
     }
     if (isKnownCiEnvironment()) {
       const ciSecrets = [authSecret, fieldKey, appSigningKey];

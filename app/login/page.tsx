@@ -9,6 +9,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -16,10 +17,15 @@ export default function LoginPage() {
     event.preventDefault();
     setLoading(true);
     setError("");
-    const result = await signIn("credentials", { email, password, redirect: false });
+    const result = await signIn("credentials", {
+      email,
+      password,
+      mfaCode: mfaCode || undefined,
+      redirect: false
+    });
     setLoading(false);
     if (result?.error) {
-      setError("Email atau kata sandi salah, atau terlalu banyak percobaan. Coba lagi nanti.");
+      setError("Login gagal. Periksa email, kata sandi, kode MFA, atau coba lagi nanti.");
       return;
     }
     router.push("/dashboard");
@@ -58,12 +64,26 @@ export default function LoginPage() {
             required
           />
         </label>
+        <label className="block text-sm font-medium">
+          Kode MFA / kode pemulihan <span className="font-normal">(bila diaktifkan)</span>
+          <input
+            className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+            type="text"
+            value={mfaCode}
+            onChange={(event) => setMfaCode(event.target.value)}
+            autoComplete="one-time-code"
+          />
+        </label>
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? "Memproses..." : "Masuk"}
         </Button>
         <p className="text-xs text-muted-foreground">
-          Akun uji untuk pengembangan tercantum di README. Jangan memakai kredensial uji di
+          Lupa kata sandi?{" "}
+          <a className="underline" href="/forgot-password">
+            Ajukan tautan reset
+          </a>
+          . Akun uji untuk pengembangan tercantum di README. Jangan memakai kredensial uji di
           produksi.
         </p>
       </form>

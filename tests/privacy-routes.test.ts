@@ -5,6 +5,9 @@ const mockAudit = vi.fn();
 const mockPatientFindUnique = vi.fn();
 const mockPatientUpdate = vi.fn();
 const mockAuditFindMany = vi.fn();
+const mockDsrCreate = vi.fn();
+const mockDsrFindFirst = vi.fn();
+const mockDsrUpdateMany = vi.fn();
 const mockTransaction = vi.fn(async (operations: unknown[]) => Promise.all(operations));
 
 vi.mock("@/auth", () => ({ auth: (...args: unknown[]) => mockAuth(...args) }));
@@ -29,10 +32,11 @@ vi.mock("@/lib/prisma", () => ({
       update: (...args: unknown[]) => mockPatientUpdate(...args)
     },
     auditLog: { findMany: (...args: unknown[]) => mockAuditFindMany(...args) },
-    medicalRecord: { updateMany: vi.fn(() => Promise.resolve({ count: 0 })) },
-    visit: { updateMany: vi.fn(() => Promise.resolve({ count: 0 })) },
-    labResult: { updateMany: vi.fn(() => Promise.resolve({ count: 0 })) },
-    prescription: { updateMany: vi.fn(() => Promise.resolve({ count: 0 })) },
+    dataSubjectRequest: {
+      create: (...args: unknown[]) => mockDsrCreate(...args),
+      findFirst: (...args: unknown[]) => mockDsrFindFirst(...args),
+      updateMany: (...args: unknown[]) => mockDsrUpdateMany(...args)
+    },
     apiLog: { create: vi.fn(() => Promise.resolve()) },
     $transaction: (...args: unknown[]) => mockTransaction(...(args as [unknown[]]))
   }
@@ -70,7 +74,12 @@ describe("consent route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPatientFindUnique.mockResolvedValue({ ...consentRecord, visits: [] });
-    mockPatientUpdate.mockResolvedValue({ ...consentRecord, consentStatus: "REVOKED" });
+    mockPatientUpdate.mockResolvedValue({
+      ...consentRecord,
+      consentStatus: "REVOKED",
+      legalHold: false
+    });
+    mockDsrCreate.mockResolvedValue({ id: "dsr-1" });
     mockAudit.mockResolvedValue(undefined);
   });
 
@@ -96,15 +105,50 @@ describe("consent route", () => {
       jsonRequest("http://localhost/api/me/consent", { consent: "REVOKED" })
     );
     expect(response.status).toBe(200);
-    expect(mockPatientUpdate).toHaveBeenCalledWith(
+    const update = mockPatientUpdate.mock.calls[0]?.[0] as {
+      data: { consentStatus: string; retentionUntil: Date };
+    };
+    expect(update.data.consentStatus).toBe("REVOKED");
+    expect(update.data.retentionUntil.getTime()).toBeGreaterThan(Date.now());
+    expect(mockDsrCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "p1" },
-        data: expect.objectContaining({ consentStatus: "REVOKED" })
+        data: expect.objectContaining({ patientId: "p1", type: "CONSENT_WITHDRAWAL" })
       })
     );
     expect(mockAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "CONSENT_REVOKED", targetPatientId: "p1" })
     );
+  });
+
+  it("retensi 25 tahun dihitung dari kunjungan terakhir", async () => {
+    mockAuth.mockResolvedValue(session("PASIEN", "p1"));
+    mockPatientFindUnique.mockResolvedValue({
+      ...consentRecord,
+      visits: [{ doctorId: "d1", visitDate: new Date("2026-01-01T00:00:00.000Z") }]
+    });
+    await consentPut(jsonRequest("http://localhost/api/me/consent", { consent: "REVOKED" }));
+    const update = mockPatientUpdate.mock.calls[0]?.[0] as {
+      data: { retentionUntil: Date };
+    };
+    expect(update.data.retentionUntil.getUTCFullYear()).toBe(2051);
+  });
+
+  it("pemberian ulang consent menghapus tenggat retensi lama", async () => {
+    mockAuth.mockResolvedValue(session("PASIEN", "p1"));
+    mockPatientFindUnique.mockResolvedValue({
+      ...consentRecord,
+      visits: [],
+      retentionUntil: new Date("2001-01-01T00:00:00.000Z")
+    });
+    const response = await consentPut(
+      jsonRequest("http://localhost/api/me/consent", { consent: "GRANTED" })
+    );
+    expect(response.status).toBe(200);
+    const update = mockPatientUpdate.mock.calls[0]?.[0] as {
+      data: { consentStatus: string; retentionUntil: Date | null };
+    };
+    expect(update.data.consentStatus).toBe("GRANTED");
+    expect(update.data.retentionUntil).toBeNull();
   });
 });
 
@@ -117,10 +161,13 @@ describe("privacy deletion route", () => {
     mockPatientFindUnique.mockResolvedValue({
       id: "p1",
       consentStatus: "REVOKED",
-      consentRevokedAt: new Date("2026-01-01T00:00:00.000Z"),
-      retentionUntil: null,
+      consentRevokedAt: new Date("2000-01-01T00:00:00.000Z"),
+      retentionUntil: new Date("2001-01-01T00:00:00.000Z"),
+      legalHold: false,
       deletedAt: null
     });
+    mockDsrFindFirst.mockResolvedValue({ id: "dsr-1", type: "DELETION", status: "APPROVED" });
+    mockDsrUpdateMany.mockResolvedValue({ count: 1 });
   });
 
   function deleteRequest(headers: Record<string, string> = {}) {
@@ -169,6 +216,38 @@ describe("privacy deletion route", () => {
     expect(mockAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "PATIENT_ANONYMIZED", targetPatientId: "p1" })
     );
+    expect(mockDsrUpdateMany).toHaveBeenCalled();
+  });
+
+  it("menolak penghapusan saat legal hold aktif", async () => {
+    mockAuth.mockResolvedValue(session("ADMIN", undefined));
+    mockPatientFindUnique.mockResolvedValue({
+      id: "p1",
+      consentStatus: "REVOKED",
+      consentRevokedAt: new Date("2000-01-01T00:00:00.000Z"),
+      retentionUntil: new Date("2001-01-01T00:00:00.000Z"),
+      legalHold: true,
+      deletedAt: null
+    });
+    const response = await privacyDelete(deleteRequest(), params);
+    expect(response.status).toBe(400);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it("menolak penghapusan tanpa tiket terverifikasi", async () => {
+    mockAuth.mockResolvedValue(session("ADMIN", undefined));
+    mockDsrFindFirst.mockResolvedValue(null);
+    const response = await privacyDelete(deleteRequest(), params);
+    expect(response.status).toBe(409);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it("menolak tiket yang sudah ditutup tanpa eksekusi anonimisasi", async () => {
+    mockAuth.mockResolvedValue(session("ADMIN", undefined));
+    mockDsrFindFirst.mockResolvedValue({ id: "dsr-1", type: "DELETION", status: "COMPLETED" });
+    const response = await privacyDelete(deleteRequest(), params);
+    expect(response.status).toBe(409);
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 });
 

@@ -15,20 +15,25 @@ This document maps a patient record from intake to deletion. It complements
 
 ```text
 PENDING --grant--> GRANTED --revoke--> REVOKED
-   |                  |
-   +------ refuse ----+   (no outbound, record still available to authorized staff)
+   |
+   +-- refuse --> REVOKED   (no REFUSED state; no outbound, record still available to authorized staff)
 ```
 
-- `consentAt` / `consentRevokedAt` record timestamps; a grant after revocation must set a new
-  `consentAt` and clear `consentRevokedAt` in the privacy route implementation.
-- Approval tokens and queued jobs re-check consent before any real provider call.
+- `consentAt` / `consentRevokedAt` record timestamps; a grant after revocation sets a new `consentAt`,
+  clears `consentRevokedAt`, and reopens outbound processing.
+- Withdrawal is enforced at the point of the real provider call: `agents/urgentCaller.ts` reloads
+  the patient and requires `consentStatus === GRANTED`; pending queued work therefore cannot deliver
+  after revocation. Approval tokens are one-use (`ApprovalUse`) and expiry-checked.
+- Withdrawal creates a `CONSENT_WITHDRAWAL` DSR ticket stamped with the 3×24 h SLA.
 
 ## 3. Clinical use & retention
 
-- Visit, triage, lab, prescription, and medical record rows are linked to the patient and visit.
+- `retentionUntil = last Visit.visitDate + 25 years` (see `lib/privacy.ts`). `npm run retention:sweep`
+  recomputes it for all active patients weekly and escalates overdue DSR tickets. Visit, triage, lab, prescription, and medical record rows are linked to the patient and visit.
 - `retentionUntil` is the per-patient deadline; if unset, the clinic-wide policy applies.
 - `Report.sentAt` and `Report.expiresAt` control generated report delivery and file purge.
-- API/agent logs follow their own retention settings; signed audit logs are append-only evidence.
+- API/agent logs follow their own retention settings; signed audit rows are append-only in routine
+  production (destructive dev/test seed excepted).
 
 ## 4. Deletion / anonymization
 
@@ -38,7 +43,8 @@ deletion request -> deletionRequestedAt + deletionReason
                  -> anonymizedAt when identifiers are irreversibly replaced
 ```
 
-- Hard deletion of audit logs is not allowed; keep the decision and actor in the audit trail.
+- Hard deletion of audit logs is not allowed in routine production retention; keep the decision and
+  actor in the audit trail. The destructive dev/test seed is the documented exception (see §5).
 - When statutory medical retention is still active, anonymize identifiers and keep clinical facts.
 - Backups are immutable until retention expires; a deletion is fully effective only after every
   affected backup ages out. Record that fact in the deletion ticket.

@@ -298,6 +298,113 @@ export async function enqueueDeadLetterJob(
   };
 }
 
+export interface DeadLetterEntry {
+  sourceQueue: string;
+  jobId: string | null;
+  jobName: string;
+  data: unknown;
+  attemptsMade: number;
+  error: string;
+  failedAt: string;
+  replayedAt?: string;
+  replayJobId?: string;
+}
+
+/** Daftar job DLQ untuk operator; tidak pernah memuat payload ke UI publik. */
+export async function listDeadLetterJobs(limit = 20): Promise<
+  Array<{
+    id: string;
+    sourceJobId: string | null;
+    jobName: string;
+    failedAt: string;
+    error: string;
+    replayedAt: string | null;
+    replayJobId: string | null;
+  }>
+> {
+  if (!isQueueEnabled()) return [];
+  const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+  const jobs = await getDeadLetterQueue().getJobs(
+    ["completed", "failed", "waiting"],
+    0,
+    safeLimit - 1
+  );
+  return jobs.map((job) => {
+    const row = job.data as DeadLetterEntry;
+    return {
+      id: job.id ?? "",
+      sourceJobId: row.jobId ?? null,
+      jobName: row.jobName ?? "?",
+      failedAt: row.failedAt ?? "",
+      error: (row.error ?? "").slice(0, 300),
+      replayedAt: row.replayedAt ?? null,
+      replayJobId: row.replayJobId ?? null
+    };
+  });
+}
+
+/** ID deterministik mencegah dua replay konkuren mengirim dua kali. */
+export function deadLetterReplayJobId(jobId: string): string {
+  return `dlq-replay:${jobId}`;
+}
+
+/** Validasi murni sebelum replay; dipakai CLI dan tes tanpa koneksi Redis. */
+export function validateDeadLetterEntry(row: DeadLetterEntry): void {
+  if (row.replayedAt) {
+    throw new Error(`Job DLQ sudah direplay pada ${row.replayedAt}.`);
+  }
+  if (row.sourceQueue !== QUEUE_NAME) {
+    throw new Error("Job DLQ berasal dari antrean lain; replay ditolak.");
+  }
+  if (row.jobName === "orchestrator.run") {
+    orchestratorJobSchema.parse(verifyJobPayload<OrchestratorJobPayload>(row.data));
+    return;
+  }
+  if (row.jobName === "urgent.followup") {
+    urgentFollowupJobSchema.parse(verifyJobPayload<UrgentFollowupJobPayload>(row.data));
+    return;
+  }
+  throw new Error(`Nama job ${row.jobName} tidak dikenal; replay ditolak.`);
+}
+
+/**
+ * Replay satu job DLQ. Payload aslinya tetap diverifikasi HMAC + Zod sebelum
+ * masuk antrean utama. ID replay deterministik membuat dua eksekusi konkuren
+ * tidak bisa menghasilkan dua job; replayedAt ditulis setelah enqueue sukses.
+ */
+export async function replayDeadLetterJob(
+  jobId: string
+): Promise<EnqueueResult & { sourceJobId: string | null }> {
+  if (!isQueueEnabled()) throw new Error("Replay DLQ hanya tersedia saat QUEUE_MODE=redis.");
+  assertSecureEnvironment();
+  assertRedisSecurity();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(jobId)) throw new Error("ID job DLQ tidak valid.");
+
+  const entry = await getDeadLetterQueue().getJob(jobId);
+  if (!entry) throw new Error(`Job DLQ ${jobId} tidak ditemukan.`);
+  const row = entry.data as DeadLetterEntry;
+  validateDeadLetterEntry(row);
+
+  const replayJobId = deadLetterReplayJobId(jobId);
+  const added = await getQueue().add(
+    row.jobName,
+    row.data,
+    buildJobOptions({ jobId: replayJobId })
+  );
+  await entry.updateData({
+    ...row,
+    replayedAt: new Date().toISOString(),
+    replayJobId: added.id ?? replayJobId
+  });
+  recordQueueMetric("job.replayed", { jobName: row.jobName });
+  return {
+    mode: "redis",
+    jobId: added.id ?? replayJobId,
+    sourceJobId: row.jobId ?? null,
+    detail: `DLQ ${jobId} direplay sebagai ${row.jobName} dengan jobId ${added.id ?? replayJobId}.`
+  };
+}
+
 export async function enqueueJob<K extends QueueJobName>(
   name: K,
   payload: QueueJobPayloads[K],

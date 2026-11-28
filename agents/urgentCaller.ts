@@ -21,7 +21,7 @@ import { sendWhatsApp, isOutboundAllowed, type OutboundResult } from "@/lib/what
 import { callPatient } from "@/lib/phone";
 import { writeAgentLog } from "@/lib/agentLog";
 import { buildUrgentJobId, enqueueJob, isQueueEnabled } from "@/lib/queue";
-import { verifyApproval, type ApprovalVerification } from "@/lib/approval";
+import { approvalAllowsChannel, verifyApproval, type ApprovalVerification } from "@/lib/approval";
 import { requireHumanApproval } from "@/lib/env";
 import { buildUrgentDedupeKey } from "@/agents/urgentDedupe";
 
@@ -318,16 +318,48 @@ export async function executeUrgentFollowUp(options: FollowUpOptions): Promise<S
   const patient = await prisma.patient.findUnique({ where: { id: options.patientId } });
   if (!patient) throw new Error("Pasien tidak ditemukan.");
 
+  const definitions =
+    options.stageOffset === undefined
+      ? FOLLOWUP_STAGES
+      : FOLLOWUP_STAGES.filter((stage) => stage.offsetSeconds === options.stageOffset);
+
+  // Consent pasien adalah gate terakhir sebelum aksi nyata. Job antrean yang sudah
+  // dijadwalkan tidak perlu dibatalkan satu per satu: saat dijalankan, gate ini
+  // membuatnya jatuh ke mode simulasi bila consent dicabut.
+  const consentGranted = patient.consentStatus === "GRANTED";
+  const baseRealAllowed =
+    options.simulate !== true && consentGranted && isOutboundAllowed() && requireHumanApproval();
+
   let approval: ApprovalVerification = {
     ok: false,
-    reason: "Simulasi tidak memerlukan approval.",
+    reason: consentGranted ? "Simulasi tidak memerlukan approval." : "Consent pasien tidak aktif.",
     channels: []
   };
-  if (options.simulate !== true && isOutboundAllowed()) {
-    approval = await verifyApproval(options.approvalId, "URGENT", options.triageLogId ?? "");
+  if (baseRealAllowed) {
+    const verificationOptions = {
+      consumptionKey: `urgent:${options.triageLogId ?? ""}:${options.stageOffset ?? "all"}`,
+      actorId: options.actorId,
+      action: "OUTBOUND_SEND"
+    };
+    // Cek dulu tanpa menghabiskan approval. Klaim hanya dilakukan bila ada
+    // tahap yang memang diizinkan kanalnya; consent yang dicabut atau approval
+    // tanpa kanal yang cocok tidak boleh membatalkan retry di lain waktu.
+    const preview = await verifyApproval(
+      options.approvalId,
+      "URGENT",
+      options.triageLogId ?? "",
+      verificationOptions
+    );
+    const hasAllowedStage = definitions.some((stage) =>
+      approvalAllowsChannel(preview, stage.channel)
+    );
+    approval = hasAllowedStage
+      ? await verifyApproval(options.approvalId, "URGENT", options.triageLogId ?? "", {
+          ...verificationOptions,
+          consume: true
+        })
+      : preview;
   }
-  const mayRunReal =
-    options.simulate !== true && isOutboundAllowed() && approval.ok && requireHumanApproval();
 
   const phone = decryptField(patient.phoneEncrypted);
   const message = buildWhatsappMessage({
@@ -336,28 +368,29 @@ export async function executeUrgentFollowUp(options: FollowUpOptions): Promise<S
     nomorDarurat: process.env.EMERGENCY_NUMBER ?? "119"
   });
   const stages: StageResult[] = [];
-  const definitions =
-    options.stageOffset === undefined
-      ? FOLLOWUP_STAGES
-      : FOLLOWUP_STAGES.filter((stage) => stage.offsetSeconds === options.stageOffset);
 
   for (const stage of definitions) {
     let status = stage.status;
     let detail = stage.detail;
-    if (stage.send === "WHATSAPP" && mayRunReal) {
+    const stageMayRunReal = baseRealAllowed && approvalAllowsChannel(approval, stage.channel);
+    const stageReason =
+      approval.ok && !approvalAllowsChannel(approval, stage.channel)
+        ? `Kanal ${stage.channel} tidak disetujui.`
+        : approval.reason;
+    if (stage.send === "WHATSAPP" && stageMayRunReal) {
       const result: OutboundResult = await sendWhatsApp(phone, message);
       status = result.ok ? "SENT" : "FAILED";
       detail = `${detail} | ${result.detail}`;
-    } else if (stage.send === "CALL" && mayRunReal) {
+    } else if (stage.send === "CALL" && stageMayRunReal) {
       const result: OutboundResult = await callPatient(phone, SPOKEN_MESSAGE);
       status = result.ok ? "SENT" : "FAILED";
       detail = `${detail} | ${result.detail}`;
     } else if (stage.channel === "ESCALATION") {
-      status = mayRunReal ? "ESCALATED" : "SIMULATED";
-      detail = `${detail}${mayRunReal ? "" : " | Mode simulasi."}`;
+      status = stageMayRunReal ? "ESCALATED" : "SIMULATED";
+      detail = `${detail}${stageMayRunReal ? "" : ` | Mode simulasi: ${stageReason}.`}`;
     } else {
       status = "SIMULATED";
-      detail = `${detail} | Mode simulasi${approval.ok ? "" : `: ${approval.reason}`}.`;
+      detail = `${detail} | Mode simulasi: ${stageReason}.`;
     }
 
     const call = await prisma.urgentCall.create({
@@ -374,7 +407,7 @@ export async function executeUrgentFollowUp(options: FollowUpOptions): Promise<S
             : stage.channel === "CALL"
               ? "phone"
               : "internal",
-        simulated: !mayRunReal,
+        simulated: !stageMayRunReal,
         message: stage.channel === "WHATSAPP" ? message : stage.detail,
         triggeredBy: options.actorId ?? "SYSTEM",
         approvedBy: options.approvalId ?? options.approvedBy ?? null
@@ -391,6 +424,8 @@ export async function executeUrgentFollowUp(options: FollowUpOptions): Promise<S
     payload: JSON.stringify({
       dedupeKey: options.dedupeKey ?? buildUrgentDedupeKey(options.patientId, "MERAH"),
       triageLogId: options.triageLogId ?? null,
+      consentStatus: patient.consentStatus,
+      realOutbound: baseRealAllowed,
       stages: stages.map(({ label, status }) => ({ label, status }))
     })
   });

@@ -12,6 +12,7 @@ import { signPayload, verifyPayloadSignature } from "@/lib/crypto";
 import { requireHumanApproval } from "@/lib/env";
 
 export const APPROVAL_ACTION = "OUTBOUND_APPROVAL";
+export const APPROVAL_DENIAL_ACTION = "OUTBOUND_APPROVAL_DENIED_BY_APPROVER";
 export const APPROVAL_TTL_MS = 30 * 60_000;
 
 export type ApprovalScope = "URGENT" | "REPORT";
@@ -44,6 +45,15 @@ export function approvalCanonicalPayload(record: ApprovalRecord): string {
     record.channels.join(","),
     record.expiresAt
   ].join("|");
+}
+
+/** Detail audit penolakan yang bisa dicocokkan oleh verifyApproval. */
+export function approvalDenialDetail(
+  scope: ApprovalScope,
+  resourceId: string,
+  reason: string
+): string {
+  return `${scope}|${resourceId}|${reason.replace(/\|/g, "/")}`;
 }
 
 export async function createApproval(input: {
@@ -80,10 +90,28 @@ export async function createApproval(input: {
   return record;
 }
 
+/** Satu approval hanya mengizinkan kanal yang memang dipilih penyetuju. */
+export function approvalAllowsChannel(
+  verification: ApprovalVerification,
+  channel: string
+): boolean {
+  return verification.ok && (!requireHumanApproval() || verification.channels.includes(channel));
+}
+
+export interface ApprovalConsumptionOptions {
+  /** Tandai approval sebagai terpakai (sekali pakai per consumptionKey). */
+  consume?: boolean;
+  /** Kunci unik untuk satu aksi, mis. `urgent:<triageLogId>:<offset>`. */
+  consumptionKey?: string;
+  actorId?: string;
+  action?: string;
+}
+
 export async function verifyApproval(
   approvalId: string | undefined,
   scope: ApprovalScope,
-  resourceId: string
+  resourceId: string,
+  options: ApprovalConsumptionOptions = {}
 ): Promise<ApprovalVerification> {
   if (!requireHumanApproval()) {
     return {
@@ -102,6 +130,24 @@ export async function verifyApproval(
   });
   if (!row) {
     return { ok: false, reason: "Approval tidak ditemukan.", channels: [] };
+  }
+
+  // Penolakan setelah approval diberikan mencabut sisa TTL approval tersebut.
+  const denial = await prisma.auditLog.findFirst({
+    where: {
+      action: APPROVAL_DENIAL_ACTION,
+      createdAt: { gte: row.createdAt },
+      detail: { startsWith: `${scope}|${resourceId}|` }
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true }
+  });
+  if (denial) {
+    return {
+      ok: false,
+      reason: "Approval telah dicabut oleh penolakan berikutnya.",
+      channels: []
+    };
   }
 
   // Kompatibel dengan baris lama yang menyisipkan tanda tangan di `detail`.
@@ -144,6 +190,25 @@ export async function verifyApproval(
       reason: "Penyetuju tidak berwenang atau sudah dinonaktifkan.",
       channels: []
     };
+  }
+
+  if (options.consume) {
+    const consumptionKey = options.consumptionKey ?? `${scope}:${resourceId}`;
+    try {
+      await prisma.approvalUse.create({
+        data: {
+          approvalId: record.approvalId,
+          consumptionKey,
+          actorId: options.actorId ?? record.approverId,
+          action: options.action ?? scope
+        }
+      });
+    } catch (error) {
+      if ((error as { code?: string }).code === "P2002") {
+        return { ok: false, reason: "Approval sudah dipakai untuk aksi ini.", channels: [] };
+      }
+      throw error;
+    }
   }
 
   return {

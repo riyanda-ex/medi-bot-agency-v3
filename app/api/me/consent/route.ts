@@ -12,14 +12,19 @@ import {
 } from "@/lib/apiRoute";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/lib/rbac";
+import {
+  addYears,
+  CLINICAL_RETENTION_YEARS,
+  consentRetentionUntil,
+  dsrDueAt,
+  latestVisitDate,
+  DSR_SLA_HOURS
+} from "@/lib/privacy";
 
 const consentBodySchema = z.object({
   patientId: patientIdSchema.optional(),
   consent: z.enum(["GRANTED", "REVOKED"])
 });
-
-/** Retensi default setelah pencabutan persetujuan (hari). */
-const RETENTION_DAYS = 30;
 
 function consentPayload(patient: {
   id: string;
@@ -27,13 +32,16 @@ function consentPayload(patient: {
   consentAt: Date | null;
   consentRevokedAt: Date | null;
   retentionUntil: Date | null;
+  legalHold?: boolean;
 }) {
   return {
     patientId: patient.id,
     consentStatus: patient.consentStatus,
     consentAt: patient.consentAt?.toISOString() ?? null,
     consentRevokedAt: patient.consentRevokedAt?.toISOString() ?? null,
-    retentionUntil: patient.retentionUntil?.toISOString() ?? null
+    retentionUntil: patient.retentionUntil?.toISOString() ?? null,
+    legalHold: patient.legalHold ?? false,
+    dsrSlaHours: DSR_SLA_HOURS
   };
 }
 
@@ -62,7 +70,8 @@ async function findPatient(patientId: string) {
       consentAt: true,
       consentRevokedAt: true,
       retentionUntil: true,
-      visits: { select: { doctorId: true } }
+      legalHold: true,
+      visits: { select: { doctorId: true, visitDate: true } }
     }
   });
 }
@@ -146,6 +155,16 @@ export async function PUT(request: Request): Promise<NextResponse> {
   }
 
   const now = new Date();
+  // Retensi mengikuti kunjungan terakhir (25 tahun), bukan tanggal pencabutan.
+  // Pemberian ulang consent menghapus baseline 30 hari lama agar siklus
+  // cabut→grant→cabut tidak mewarisi tenggat erasure yang sudah terlewat.
+  const lastVisitAt = latestVisitDate(patient.visits);
+  const retentionUntil =
+    consent === "GRANTED"
+      ? lastVisitAt
+        ? addYears(lastVisitAt, CLINICAL_RETENTION_YEARS)
+        : null
+      : consentRetentionUntil(lastVisitAt, now, patient.retentionUntil);
   const updated = await prisma.patient.update({
     where: { id: patient.id },
     data:
@@ -154,22 +173,43 @@ export async function PUT(request: Request): Promise<NextResponse> {
             consentStatus: "GRANTED",
             consentAt: now,
             consentRevokedAt: null,
-            retentionUntil: null,
-            deletionRequestedAt: null
+            retentionUntil,
+            deletionRequestedAt: null,
+            deletionReason: null
           }
         : {
             consentStatus: "REVOKED",
             consentRevokedAt: now,
-            retentionUntil: new Date(now.getTime() + RETENTION_DAYS * 86_400_000)
+            retentionUntil
           },
     select: {
       id: true,
       consentStatus: true,
       consentAt: true,
       consentRevokedAt: true,
-      retentionUntil: true
+      retentionUntil: true,
+      legalHold: true
     }
   });
+
+  if (consent === "REVOKED") {
+    // Penarikan consent adalah hak subjek data. Tiket SLA 3x24 jam dicatat
+    // walaupun eksekusi penghentian outbound terjadi segera.
+    await prisma.dataSubjectRequest.create({
+      data: {
+        patientId: patient.id,
+        type: "CONSENT_WITHDRAWAL",
+        status: "COMPLETED",
+        requestedBy: ctx.userId ?? "SYSTEM",
+        requestedAt: now,
+        dueAt: dsrDueAt(now),
+        completedAt: now,
+        notes: lastVisitAt
+          ? `Consent dicabut; retensi klinis sampai ${retentionUntil?.toISOString() ?? "-"}.`
+          : "Consent dicabut; tidak ada kunjungan tercatat."
+      }
+    });
+  }
 
   await auditApiAccess({
     request,
@@ -179,7 +219,7 @@ export async function PUT(request: Request): Promise<NextResponse> {
     detail:
       consent === "GRANTED"
         ? "Persetujuan pemrosesan data diberikan."
-        : `Persetujuan dicabut; retensi ${RETENTION_DAYS} hari dijadwalkan.`,
+        : `Persetujuan dicabut; retensi klinis sampai ${retentionUntil?.toISOString() ?? "-"}; SLA hak ${DSR_SLA_HOURS} jam tercatat.`,
     requestId: ctx.requestId
   });
 

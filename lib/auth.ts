@@ -7,11 +7,16 @@ import { normalizeRole, TIDAK_AKTIF } from "@/lib/rbac";
 import { assertSecureEnvironment } from "@/lib/env";
 import { checkRateLimit, pruneRateLimits } from "@/lib/rateLimit";
 import { getRequestIp, recordAuthFailure } from "@/lib/audit";
+import { decryptField } from "@/lib/crypto";
+import { verifyTotp } from "@/lib/mfa";
+import { consumeRecoveryCodeForUser } from "@/lib/mfaStore";
 import { logger } from "@/lib/logger";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1).max(200)
+  password: z.string().min(1).max(200),
+  // Kode TOTP/kode pemulihan. Kosong hanya diperbolehkan bila MFA tidak aktif.
+  mfaCode: z.string().trim().max(64).optional()
 });
 
 const LOGIN_LIMIT = 8;
@@ -27,7 +32,8 @@ export const authConfig: NextAuthConfig = {
       name: "Akun Klinik",
       credentials: {
         email: { label: "Email", type: "email" },
-        password: { label: "Kata sandi", type: "password" }
+        password: { label: "Kata sandi", type: "password" },
+        mfaCode: { label: "Kode MFA / kode pemulihan", type: "text" }
       },
       async authorize(credentials, request) {
         assertSecureEnvironment();
@@ -57,6 +63,31 @@ export const authConfig: NextAuthConfig = {
           logger.warn("AUTH_LOGIN_INACTIVE", { ip });
           await recordAuthFailure({ email, ip, reason: "ACCOUNT_INACTIVE" });
           return null;
+        }
+
+        if (user.mfaEnabled) {
+          const code = parsed.data.mfaCode;
+          if (!code) {
+            logger.warn("AUTH_MFA_REQUIRED", { ip });
+            await recordAuthFailure({ email, ip, reason: "MFA_REQUIRED" });
+            return null;
+          }
+          let mfaOk = false;
+          if (user.mfaSecret) {
+            try {
+              mfaOk = verifyTotp(decryptField(user.mfaSecret), code);
+            } catch {
+              mfaOk = false;
+            }
+          }
+          if (!mfaOk) {
+            mfaOk = await consumeRecoveryCodeForUser(user.id, user.mfaRecoveryHash ?? null, code);
+          }
+          if (!mfaOk) {
+            logger.warn("AUTH_MFA_FAILED", { ip });
+            await recordAuthFailure({ email, ip, reason: "MFA_INVALID" });
+            return null;
+          }
         }
 
         await prisma.user.update({

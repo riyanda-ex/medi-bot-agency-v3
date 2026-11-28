@@ -15,8 +15,15 @@ MediBot processes Indonesian patient data. Treat every patient record as
   record the time of grant/revocation. Do not broaden purpose without a new notice.
 - **Data minimization**: collect only fields required for triage/reporting; mask NIK/phone for
   low-privilege roles; never place diagnosis or vital numbers in outbound messages.
-- **Data subject rights**: access, correction, revocation, and deletion are handled through the
-  privacy routes (see `docs/API.md`) with an audit trail and actor identity.
+- **Data subject rights**: `POST /api/me/privacy-requests` opens a ticket with a **3×24 h (72 h)** SLA,
+  `GET /api/me/privacy-requests` lists only the patient's own tickets, and `PATCH /api/privacy-requests/[id]`
+  is ADMIN-only verification. Deletion/anonymisation additionally requires an approved ticket, consent
+  `REVOKED` (or non-null `consentRevokedAt`), expiry of the 25-year clinical retention window, and no
+  legal hold. Consent withdrawal creates a completed 72 h SLA record immediately because
+  patient-directed outbound processing stops at once.
+- **Retention**: `retentionUntil` is derived from the **last visit + 25 years** (Permenkes 24/2022), not from
+  the revocation date; a patient with no visit uses a 30-day administrative window. `npm run retention:sweep`
+  realigns this weekly and reports overdue tickets; it never destroys clinical facts.
 - **DPA**: written agreements with WhatsApp/phone/email/cloud providers before real outbound use.
 - **Breach response**: follow `docs/INCIDENT-RESPONSE.md`; notify the controller/authority per
   the applicable PDP timeline.
@@ -37,16 +44,20 @@ MediBot processes Indonesian patient data. Treat every patient record as
 
 Rules enforced by the application/hardening layer:
 
-1. No real outbound WhatsApp/phone/email without `GRANTED` consent **and** human approval.
-2. `REVOKED` blocks new outbound jobs immediately; already queued jobs must re-check consent.
+1. Patient-directed WhatsApp/phone follow-up requires `GRANTED` consent **and** signed human approval
+   at execution (`agents/urgentCaller.ts`).
+2. `REVOKED` blocks patient-directed WhatsApp/phone jobs at call time, including jobs already queued.
+   Staff report email (`agents/reporter.ts`) is gated by approval only and does not re-check consent.
 3. Revocation and deletion requests are written to signed audit logs (actor, role, IP, path).
 4. Medical record retention overrides a quick deletion request where law requires retention:
    anonymize identifiers instead of erasing the clinical record.
 
 ## Retention & Deletion
 
-- Audit/agent/API logs: target 1 year (configurable via `API_LOG_RETENTION_DAYS`); audit records
-  with integrity signatures are not silently rewritten.
+- API logs: default 30 days via `API_LOG_RETENTION_DAYS` (max 365); agent logs follow their own settings.
+- Audit rows: 365-day review target; signed rows are append-only in routine production, not silently
+  rewritten or bulk-deleted (destructive dev/test seed excepted). Archive to WORM/SIEM before any
+  formal deletion.
 - Medical records: follow clinic policy/regulation; use `retentionUntil` and anonymization when
   the statutory period has not expired.
 - Reports: `Report.sentAt` records delivery, `Report.expiresAt` records when generated files must
@@ -65,7 +76,9 @@ Rules enforced by the application/hardening layer:
   values are accepted for decryption only; new writes always use the active key and `kid`.
 - Re-encrypt stored fields during a maintenance window; keep old keys available until the rewrite
   completes. In production, keys come from a KMS/secret manager, never from repository files.
-- Production rejects placeholder, `DEV-ONLY`, and CI-default secrets (`lib/env.ts`).
+- Production requires a distinct random `APP_SIGNING_KEY` and rejects placeholder, `DEV-ONLY`,
+  and CI-default secrets (`lib/env.ts`). A missing signing key is a startup error, not a silent
+  fallback to legacy derived keys.
 
 ## Access Control & Outbound Safety
 
@@ -73,6 +86,8 @@ Rules enforced by the application/hardening layer:
 - Mock providers by default. `ALLOW_REAL_OUTBOUND=false` and `REQUIRE_HUMAN_APPROVAL=true` are
   mandatory unless explicitly approved; production forces approval.
 - Approval tokens are HMAC-signed with a short TTL and re-validated by the worker/provider.
+- `APP_SIGNING_KEY` is mandatory in production; deliver single-use password-reset links only via
+  configured SMTP and never log raw links (dev/staging included).
 
 ## Compliance Checklist
 

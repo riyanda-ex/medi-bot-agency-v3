@@ -6,7 +6,14 @@ import { prisma } from "@/lib/prisma";
 
 const querySchema = z.object({
   patientId: patientIdSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50)
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional()
 });
 
 /** Detail audit tidak boleh membocorkan NIK, HP, atau email mentah. */
@@ -33,7 +40,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     return deny(ctx, 400, "Parameter tidak valid.", "PHI_AUDIT_INVALID_QUERY");
   }
 
-  const entries = await prisma.auditLog
+  const fetched = await prisma.auditLog
     .findMany({
       where: {
         ...(parsed.data.patientId ? { targetPatientId: parsed.data.patientId } : {}),
@@ -48,8 +55,9 @@ export async function GET(request: Request): Promise<NextResponse> {
           { action: { startsWith: "PATIENT_" } }
         ]
       },
-      orderBy: { createdAt: "desc" },
-      take: parsed.data.limit,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: parsed.data.limit + 1,
+      ...(parsed.data.cursor ? { skip: 1, cursor: { id: parsed.data.cursor } } : {}),
       select: {
         id: true,
         actorId: true,
@@ -63,7 +71,18 @@ export async function GET(request: Request): Promise<NextResponse> {
         createdAt: true
       }
     })
-    .catch(() => []);
+    .catch(() => null);
+  if (!fetched) {
+    return deny(
+      ctx,
+      503,
+      "Audit sementara tidak tersedia; hasil tidak ditampilkan.",
+      "PHI_AUDIT_UNAVAILABLE"
+    );
+  }
+  const nextCursor =
+    fetched.length > parsed.data.limit ? (fetched[parsed.data.limit - 1]?.id ?? null) : null;
+  const entries = fetched.slice(0, parsed.data.limit);
 
   await auditApiAccess({
     request,
@@ -76,6 +95,8 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   return ok(ctx, {
     entries: entries.map((entry) => ({ ...entry, detail: redactDetail(entry.detail) })),
+    limit: parsed.data.limit,
+    nextCursor,
     requestId: ctx.requestId
   });
 }

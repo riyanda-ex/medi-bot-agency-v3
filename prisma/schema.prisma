@@ -25,9 +25,18 @@ model User {
   lastLoginAt  DateTime?
   tokenVersion Int        @default(0)
   status       String     @default("AKTIF")
+  mfaEnabled   Boolean    @default(false)
+  // Secret TOTP dienkripsi dengan kunci field yang sama dengan data pasien.
+  mfaSecret          String?
+  mfaRecoveryHash    String?
+  // Pendaftaran MFA disimpan server-side; klien hanya boleh mengirim kode TOTP.
+  mfaPendingSecret        String?
+  mfaPendingRecoveryHash  String?
+  mfaPendingExpiresAt     DateTime?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   auditLogs    AuditLog[] @relation("AuditActor")
+  resetTokens  PasswordResetToken[]
 }
 
 model Patient {
@@ -48,6 +57,7 @@ model Patient {
   consentAt            DateTime?
   consentRevokedAt     DateTime?
   retentionUntil       DateTime?
+  legalHold            Boolean   @default(false)
   deletionRequestedAt  DateTime?
   deletionReason       String?
   deletedAt            DateTime?
@@ -64,6 +74,9 @@ model Patient {
   waitingLists   WaitingList[]
   claims         Claim[]
   auditLogs      AuditLog[]       @relation("AuditTarget")
+  privacyRequests DataSubjectRequest[]
+
+  @@index([createdAt])
 }
 
 model Doctor {
@@ -134,6 +147,11 @@ model MedicalRecord {
   vitalSigns       String?
   note             String?
   completenessScore Int?
+  // Tanda tangan elektronik internal (HMAC kunci dokter/klinik) untuk rekam medis.
+  signedBy         String?
+  signedRole       String?
+  signedAt         DateTime?
+  signature        String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -204,6 +222,7 @@ model UrgentCall {
   updatedAt    DateTime   @updatedAt
 
   @@index([createdAt])
+  @@index([patientId, createdAt])
 }
 
 model AgentLog {
@@ -237,6 +256,52 @@ model AuditLog {
 
   @@index([actorId, createdAt])
   @@index([targetPatientId, createdAt])
+  @@index([action, createdAt])
+}
+
+/// Konsumsi approval sekali pakai. Kunci unik mencegah replay dalam TTL 30 menit.
+model ApprovalUse {
+  id             String   @id @default(cuid())
+  approvalId     String
+  consumptionKey String
+  actorId        String
+  action         String
+  usedAt         DateTime @default(now())
+
+  @@unique([approvalId, consumptionKey])
+  @@index([approvalId])
+}
+
+/// Token reset kata sandi sekali pakai; hanya hash yang disimpan.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/// Tiket hak subjek data (UU PDP): akses/salinan, pembetulan, penarikan consent, penghapusan.
+model DataSubjectRequest {
+  id          String    @id @default(cuid())
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id])
+  type        String
+  status      String    @default("PENDING")
+  requestedBy String
+  requestedAt DateTime  @default(now())
+  dueAt       DateTime
+  completedAt DateTime?
+  notes       String?
+  // Kunci unik hanya untuk tiket aktif; dikosongkan saat status terminal.
+  openKey     String?   @unique
+
+  @@index([patientId, requestedAt])
+  @@index([status, dueAt])
 }
 
 model Report {

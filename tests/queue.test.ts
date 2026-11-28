@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_JOB_BACKOFF_MS,
   DEFAULT_MAX_JOB_ATTEMPTS,
+  QUEUE_NAME,
   buildJobOptions,
+  deadLetterReplayJobId,
   getQueueMetrics,
   isDeadLetterJobDue,
   jobRetryPolicy,
@@ -12,7 +14,9 @@ import {
   shouldOwnScheduler,
   signJobPayload,
   urgentFollowupJobSchema,
-  verifyJobPayload
+  validateDeadLetterEntry,
+  verifyJobPayload,
+  type DeadLetterEntry
 } from "../lib/queue";
 
 const envKeys = [
@@ -149,5 +153,40 @@ describe("queue: payload job", () => {
     expect(() =>
       urgentFollowupJobSchema.parse({ patientId: "p1", dedupeKey: "x".repeat(65) })
     ).toThrow();
+  });
+
+  it("ID replay DLQ deterministik agar konkuren tidak mengirim dua kali", () => {
+    expect(deadLetterReplayJobId("dlq-1")).toBe("dlq-replay:dlq-1");
+    expect(deadLetterReplayJobId("dlq-1")).toBe(deadLetterReplayJobId("dlq-1"));
+  });
+
+  it("replay DLQ menolak payload tanpa tanda tangan yang valid", () => {
+    const envelope = signJobPayload({ patientId: "p1", triageLogId: "triage-1" });
+    const entry: DeadLetterEntry = {
+      sourceQueue: QUEUE_NAME,
+      jobId: "source-1",
+      jobName: "urgent.followup",
+      data: envelope,
+      attemptsMade: 3,
+      error: "gagal",
+      failedAt: "2026-11-28T00:00:00.000Z"
+    };
+
+    expect(() => validateDeadLetterEntry(entry)).not.toThrow();
+    expect(() =>
+      validateDeadLetterEntry({
+        ...entry,
+        data: { data: { patientId: "p2", triageLogId: "triage-1" }, signature: envelope.signature }
+      })
+    ).toThrow(/Tanda tangan job tidak valid/);
+    expect(() => validateDeadLetterEntry({ ...entry, sourceQueue: "other" })).toThrow(
+      /antrean lain/
+    );
+    expect(() => validateDeadLetterEntry({ ...entry, jobName: "unknown.job" })).toThrow(
+      /tidak dikenal/
+    );
+    expect(() =>
+      validateDeadLetterEntry({ ...entry, replayedAt: "2026-11-28T01:00:00.000Z" })
+    ).toThrow(/sudah direplay/);
   });
 });
