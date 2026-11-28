@@ -5,6 +5,7 @@
  * hanya dengan mengirim string `approvedBy` lewat payload antrean.
  */
 
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { hasPermission, normalizeRole } from "@/lib/rbac";
 import { signPayload, verifyPayloadSignature } from "@/lib/crypto";
@@ -29,6 +30,8 @@ export interface ApprovalVerification {
   ok: boolean;
   reason: string;
   approverId?: string;
+  /** Kanal yang benar-benar termuat dalam rekam approval bertanda tangan. */
+  channels: string[];
 }
 
 export function approvalCanonicalPayload(record: ApprovalRecord): string {
@@ -51,12 +54,12 @@ export async function createApproval(input: {
   channels: string[];
 }): Promise<ApprovalRecord> {
   const record: ApprovalRecord = {
-    approvalId: `apr-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    approvalId: `apr-${randomUUID()}`,
     scope: input.scope,
     resourceId: input.resourceId,
     approverId: input.approverId,
     role: normalizeRole(input.role),
-    channels: input.channels,
+    channels: [...input.channels],
     expiresAt: new Date(Date.now() + APPROVAL_TTL_MS).toISOString()
   };
 
@@ -83,10 +86,14 @@ export async function verifyApproval(
   resourceId: string
 ): Promise<ApprovalVerification> {
   if (!requireHumanApproval()) {
-    return { ok: true, reason: "Approval tidak diwajibkan di lingkungan pengembangan." };
+    return {
+      ok: true,
+      reason: "Approval tidak diwajibkan di lingkungan pengembangan.",
+      channels: []
+    };
   }
   if (!approvalId) {
-    return { ok: false, reason: "Approval manusia belum diberikan." };
+    return { ok: false, reason: "Approval manusia belum diberikan.", channels: [] };
   }
 
   const row = await prisma.auditLog.findFirst({
@@ -94,7 +101,7 @@ export async function verifyApproval(
     orderBy: { createdAt: "desc" }
   });
   if (!row) {
-    return { ok: false, reason: "Approval tidak ditemukan." };
+    return { ok: false, reason: "Approval tidak ditemukan.", channels: [] };
   }
 
   // Kompatibel dengan baris lama yang menyisipkan tanda tangan di `detail`.
@@ -102,7 +109,7 @@ export async function verifyApproval(
   const canonical = separator >= 0 ? row.detail.slice(0, separator) : row.detail;
   const signature = row.signature ?? (separator >= 0 ? row.detail.slice(separator + 2) : "");
   if (!signature || !verifyPayloadSignature(canonical, signature)) {
-    return { ok: false, reason: "Tanda tangan approval tidak cocok." };
+    return { ok: false, reason: "Tanda tangan approval tidak cocok.", channels: [] };
   }
 
   const parts = canonical.split("|");
@@ -117,10 +124,10 @@ export async function verifyApproval(
   };
 
   if (record.scope !== scope || record.resourceId !== resourceId) {
-    return { ok: false, reason: "Approval tidak sesuai dengan tindakan ini." };
+    return { ok: false, reason: "Approval tidak sesuai dengan tindakan ini.", channels: [] };
   }
   if (Date.parse(record.expiresAt) < Date.now()) {
-    return { ok: false, reason: "Approval kedaluwarsa." };
+    return { ok: false, reason: "Approval kedaluwarsa.", channels: [] };
   }
 
   const approver = await prisma.user.findUnique({
@@ -132,8 +139,17 @@ export async function verifyApproval(
     approver.status !== "AKTIF" ||
     !hasPermission(normalizeRole(approver.role), "outbound:approve")
   ) {
-    return { ok: false, reason: "Penyetuju tidak berwenang atau sudah dinonaktifkan." };
+    return {
+      ok: false,
+      reason: "Penyetuju tidak berwenang atau sudah dinonaktifkan.",
+      channels: []
+    };
   }
 
-  return { ok: true, reason: "Approval valid.", approverId: record.approverId };
+  return {
+    ok: true,
+    reason: "Approval valid.",
+    approverId: record.approverId,
+    channels: record.channels
+  };
 }

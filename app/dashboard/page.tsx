@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/auth";
 import { canAccessAudit, canApproveOutbound, canViewDiagnosis, canViewTriage } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { ManualRunButton } from "@/components/manual-run-button";
@@ -16,7 +15,7 @@ async function distinctPatientCount(level: string): Promise<number> {
 }
 
 export default async function DashboardPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const role = session?.user.role ?? "TIDAK_AKTIF";
 
   const [patients, redCount, yellowCount, greenCount, urgentCalls, recent, latestDiagnosis] =

@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/auth";
 import { hasPermission } from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { enforceRateLimit, getClientIp } from "@/lib/requestGuard";
 import { resolveReportPath } from "@/lib/reportFiles";
 import { getRequestId, withRequestId } from "@/lib/requestContext";
+import { reportIdSchema } from "@/lib/apiRoute";
 import { logApiRequest } from "@/lib/apiLog";
 
 export async function GET(request: Request): Promise<NextResponse> {
   const requestId = getRequestId(request);
   const startedAt = Date.now();
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const role = session?.user.role ?? "TIDAK_AKTIF";
   const ip = getClientIp(request);
   const log = (statusCode: number, error?: string) =>
@@ -30,6 +30,10 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const { searchParams } = new URL(request.url);
   const reportId = searchParams.get("reportId");
+  if (reportId && !reportIdSchema.safeParse(reportId).success) {
+    log(400, "invalid_report_id");
+    return withRequestId(NextResponse.json({ error: "reportId tidak valid.", requestId }, { status: 400 }), requestId);
+  }
   const formatParam = searchParams.get("format") ?? searchParams.get("type");
   const format = formatParam === "excel" || formatParam === "xlsx" ? "excel" : formatParam === "pdf" ? "pdf" : null;
   if (!format) {

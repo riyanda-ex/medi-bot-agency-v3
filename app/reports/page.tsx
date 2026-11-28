@@ -1,12 +1,11 @@
-import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/auth";
 import { hasPermission } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { ReportPanel } from "@/components/report-panel";
 
 export default async function ReportsPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session) redirect("/login");
   if (!hasPermission(session.user.role, "report:read")) {
     return <main className="p-8"><h1 className="text-2xl font-semibold">Akses ditolak</h1></main>;

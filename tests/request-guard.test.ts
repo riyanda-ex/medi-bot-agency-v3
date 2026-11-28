@@ -12,9 +12,12 @@ vi.mock("@/lib/rateLimit", () => ({
 vi.mock("@/lib/audit", () => ({ getRequestIp: () => "1.2.3.4" }));
 
 import {
+  enforceBodySize,
   enforceRateLimit,
   enforceSameOrigin,
   getClientIp,
+  hasCsrfHeader,
+  isCookieAuthenticated,
   isSameOrigin
 } from "../lib/requestGuard";
 import { checkRateLimit } from "../lib/rateLimit";
@@ -47,5 +50,52 @@ describe("requestGuard", () => {
     const req = new Request("http://localhost/api/x", { headers: { origin: "https://evil.test" } });
     const res = enforceSameOrigin(req);
     expect(res?.status).toBe(403);
+  });
+
+  it("cookie POST tanpa Origin/CSRF ditolak", () => {
+    const req = new Request("http://localhost/api/x", {
+      method: "POST",
+      headers: { cookie: "authjs.session-token=abc" }
+    });
+    expect(isCookieAuthenticated(req)).toBe(true);
+    expect(hasCsrfHeader(req)).toBe(false);
+    expect(isSameOrigin(req)).toBe(false);
+    expect(enforceSameOrigin(req)?.status).toBe(403);
+  });
+
+  it("cookie POST dengan Origin sama atau header CSRF diizinkan", () => {
+    const withOrigin = new Request("http://localhost/api/x", {
+      method: "POST",
+      headers: { cookie: "authjs.session-token=abc", origin: "http://localhost" }
+    });
+    const withCsrf = new Request("http://localhost/api/x", {
+      method: "POST",
+      headers: { cookie: "authjs.session-token=abc", "x-csrf-token": "token" }
+    });
+    expect(isSameOrigin(withOrigin)).toBe(true);
+    expect(isSameOrigin(withCsrf)).toBe(true);
+  });
+
+  it("klien bearer tanpa Origin tetap diizinkan", () => {
+    const req = new Request("http://localhost/api/x", {
+      method: "POST",
+      headers: { authorization: "Bearer abc" }
+    });
+    expect(isSameOrigin(req)).toBe(true);
+  });
+
+  it("enforceBodySize menolak payload besar", async () => {
+    const big = new Request("http://localhost/api/x", {
+      method: "POST",
+      body: "x".repeat(100)
+    });
+    const small = new Request("http://localhost/api/x", {
+      method: "POST",
+      body: "x".repeat(5)
+    });
+    expect((await enforceBodySize(big, 10)).response?.status).toBe(413);
+    const guarded = await enforceBodySize(small, 10);
+    expect(guarded.response).toBeNull();
+    expect(await guarded.request.text()).toBe("x".repeat(5));
   });
 });

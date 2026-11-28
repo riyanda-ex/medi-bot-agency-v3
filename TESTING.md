@@ -6,8 +6,9 @@
 npm test
 ```
 
-Harapan: **28/28 tes lulus** — 10 tes triage (`tests/triage.test.ts`), 3 tes helper Bug Hunter
-(`fixes/fixes.test.ts`), dan 15 tes hardening (`tests/hardening.test.ts`).
+Harapan: semua tes lulus. Selain triage, helper Bug Hunter, dan hardening, menjalankan
+`tests/data-lifecycle.test.ts` (guard seed, kata sandi uji, field lifecycle di schema + migrasi).
+Jumlah tes dapat bertambah seiring hardening; lihat ringkasan output Vitest.
 
 Cakupan triage:
 
@@ -30,8 +31,10 @@ payload job, containment path laporan, dan rate limit login.
 Cek tambahan:
 
 ```powershell
-npm run typecheck
-npm run build
+npm run typecheck      # TS6 alias (typescript-eslint tidak menerima TS7)
+npm run typecheck:7    # kompilator TS7 native
+npm run verify:all     # lint + format + kedua typecheck + test + build + OpenAPI
+npm run openapi:check
 npm audit --audit-level=high
 ```
 
@@ -74,9 +77,10 @@ npm run e2e
 
 Server produksi (`npm run build && npm run start`) menolak kunci DEV dan `SYNC_MODE=true`.
 Bila ingin menjalankan E2E terhadap build produksi, siapkan environment produksi yang aman
-(`NEXTAUTH_SECRET`/`FIELD_ENCRYPTION_KEY` acak, `SYNC_MODE=false`, `ALLOW_SEED=true`,
-`SEED_PASSWORD` kuat) dan seed ulang database sesuai kunci tersebut. CI melakukan ini dengan
-nilai throwaway khusus CI.
+(`NEXTAUTH_SECRET`/`FIELD_ENCRYPTION_KEY` acak, `SYNC_MODE=false`, `RATE_LIMIT_MODE=redis`,
+`ALLOW_DESTRUCTIVE_SEED=1` hanya pada tahap seed test, `SEED_ADMIN_PASSWORD` kuat) dan seed ulang
+database sesuai kunci tersebut. Seed produksi tetap diblokir. CI melakukan ini dengan nilai
+throwaway khusus CI (Node 24 + npm 11.20.0, action dipin ke SHA).
 
 Kredensial dapat dioverride lewat `E2E_DOCTOR_EMAIL`, `E2E_RECEPTIONIST_EMAIL`,
 `E2E_ADMIN_EMAIL`, `E2E_PATIENT_EMAIL`, dan `E2E_PASSWORD`.
@@ -98,14 +102,16 @@ Bug Hunter) plus pemeriksaan database; Orchestrator diuji lewat Manual Run/E2E.
 ## 6. Produksi (PostgreSQL + Redis)
 
 ```powershell
-docker compose up -d
-# Isi POSTGRES_PASSWORD dan REDIS_PASSWORD di .env dengan nilai acak.
-# Set DATABASE_URL PostgreSQL, QUEUE_MODE=redis,
+# Isi POSTGRES_PASSWORD dan REDIS_PASSWORD di .env dari secret manager.
+# Set DATABASE_URL PostgreSQL, QUEUE_MODE=redis, RATE_LIMIT_MODE=redis,
 # REDIS_URL=redis://:<password>@localhost:6379,
 # NEXTAUTH_SECRET dan FIELD_ENCRYPTION_KEY minimal 32 byte acak.
-npm run db:setup:pg
+npm run prisma:generate:pg
+npx prisma migrate deploy --config prisma/postgres.config.ts
+npm run db:seed
 npm run build
 npm run queue:worker
+# Atau menjalankan seluruh stack: docker compose --profile app up -d
 ```
 
 Verifikasi producer/worker terpisah:
@@ -117,6 +123,15 @@ npm run queue:check
 Endpoint `/api/orchestrator/run` dan `/api/urgent/simulate` harus mengembalikan `202` + `jobId`,
 dan log worker menampilkan `Worker aktif` serta penyelesaian job. CI GitHub Actions menjalankan
 skenario yang sama dengan service PostgreSQL/Redis berpassword.
+
+Drill backup/restore (butuh `pg_dump`/`pg_restore` terpasang):
+
+```powershell
+npm run db:backup:pg
+# Periksa RESTORE_FILE, lalu:
+npm run db:restore:pg -- --dry-run
+# Restore nyata hanya dengan RESTORE_CONFIRM=RESTORE:<database> dan RESTORE_ALLOW_DATA_LOSS=1.
+```
 
 ## 7. Yang belum diuji untuk produksi
 

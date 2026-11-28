@@ -95,15 +95,15 @@ Buka `http://localhost:3000`.
 
 ### Akun Pengembangan Lokal
 
-> Hanya untuk pengembangan lokal. Form login tidak mengisi otomatis. Seeding produksi diblokir kecuali `ALLOW_SEED=true` dengan `SEED_PASSWORD` yang kuat.
+> Hanya untuk pengembangan lokal. Form login tidak mengisi otomatis. Seed destruktif hanya berjalan di `development`/`test` dengan `ALLOW_DESTRUCTIVE_SEED=1`; produksi selalu diblokir. Kata sandi berasal dari `SEED_ADMIN_PASSWORD` (atau nilai acak yang dicetak sekali bila tidak diisi).
 
-| Peran       | Email                        | Kata sandi    | Akses Diagnosis |
-| ----------- | ---------------------------- | ------------- | --------------- |
-| DOKTER      | `dokter@klinik.example`      | `password123` | Ya              |
-| PERAWAT     | `perawat@klinik.example`     | `password123` | Triase saja     |
-| RESEPSIONIS | `resepsionis@klinik.example` | `password123` | Tidak           |
-| ADMIN       | `admin@klinik.example`       | `password123` | Ya              |
-| PASIEN      | `pasien@klinik.example`      | `password123` | Data sendiri    |
+| Peran       | Email                        | Kata sandi                   | Akses Diagnosis |
+| ----------- | ---------------------------- | ---------------------------- | --------------- |
+| DOKTER      | `dokter@klinik.example`      | `SEED_ADMIN_PASSWORD` / acak | Ya              |
+| PERAWAT     | `perawat@klinik.example`     | `SEED_ADMIN_PASSWORD` / acak | Triase saja     |
+| RESEPSIONIS | `resepsionis@klinik.example` | `SEED_ADMIN_PASSWORD` / acak | Tidak           |
+| ADMIN       | `admin@klinik.example`       | `SEED_ADMIN_PASSWORD` / acak | Ya              |
+| PASIEN      | `pasien@klinik.example`      | `SEED_ADMIN_PASSWORD` / acak | Data sendiri    |
 
 ## Perintah yang Tersedia
 

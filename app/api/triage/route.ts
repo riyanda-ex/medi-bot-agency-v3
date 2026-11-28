@@ -2,15 +2,19 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { runUrgentTriage } from "@/agents/urgentCaller";
+import { assertPatientAccess, PatientAccessError, type Role } from "@/lib/rbac";
 import { writeAgentLog } from "@/lib/agentLog";
 import { auditApiAccess } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import {
+  approvalIdSchema,
   createApiContext,
   deny,
+  guardBodySize,
   guardOrigin,
   guardRateLimit,
   ok,
+  patientIdSchema,
   requirePermission
 } from "@/lib/apiRoute";
 
@@ -28,9 +32,9 @@ const vitalsSchema = z.object({
 });
 
 const bodySchema = z.object({
-  patientId: z.string().min(1),
+  patientId: patientIdSchema,
   complaint: z.string().max(500).optional(),
-  approvalId: z.string().min(1).optional(),
+  approvalId: approvalIdSchema.optional(),
   vitals: vitalsSchema
 });
 
@@ -52,7 +56,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   const limited = await guardRateLimit(ctx, `triage:${ctx.userId ?? ctx.ip}`, 60, 60_000);
   if (limited) return limited;
 
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const tooLarge = await guardBodySize(ctx);
+  if (tooLarge) return tooLarge;
+
+  const parsed = bodySchema.safeParse(await ctx.request.json().catch(() => null));
   if (!parsed.success) {
     return deny(ctx, 400, "Data tidak valid.", "TRIAGE_INVALID", undefined, {
       detail: parsed.error.flatten()
@@ -61,6 +68,39 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const patient = await prisma.patient.findUnique({ where: { id: parsed.data.patientId } });
   if (!patient) return deny(ctx, 404, "Pasien tidak ditemukan.", "TRIAGE_PATIENT_NOT_FOUND");
+
+  let assignedDoctorId: string | null = null;
+  if (ctx.role === "DOKTER") {
+    try {
+      const visit = await prisma.visit.findFirst({
+        where: { patientId: patient.id },
+        orderBy: { visitDate: "desc" },
+        select: { doctorId: true }
+      });
+      assignedDoctorId = visit?.doctorId ?? null;
+    } catch {
+      assignedDoctorId = null;
+    }
+  }
+  try {
+    assertPatientAccess(
+      ctx.role as Role,
+      ctx.userId,
+      patient.id,
+      ctx.session?.user.patientId,
+      assignedDoctorId,
+      ctx.session?.user.doctorId
+    );
+  } catch (error) {
+    if (!(error instanceof PatientAccessError)) throw error;
+    return deny(
+      ctx,
+      403,
+      "Akses ditolak: pasien di luar scope Anda.",
+      "TRIAGE_OBJECT_DENIED",
+      `Peran ${ctx.role} mencoba triase pasien ${patient.id}.`
+    );
+  }
 
   const { vitals } = parsed.data;
   const visit = await prisma.visit.create({

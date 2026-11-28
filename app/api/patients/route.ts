@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { maskNik } from "@/lib/crypto";
+import { auditApiAccess } from "@/lib/audit";
 import { createApiContext, deny, guardRateLimit, ok, requirePermission } from "@/lib/apiRoute";
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -34,7 +34,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     return {
       id: p.id,
       name: p.name,
-      nik: canReadNik ? maskNik(p.nikEncrypted) : "************",
+      // nikMasked sudah disimpan saat import; jangan pernah mask ciphertext.
+      nik: canReadNik ? p.nikMasked : "************",
       birthDate: p.birthDate.toISOString(),
       gender: "-",
       phone: canReadContact ? "********" : "********",
@@ -59,5 +60,18 @@ export async function GET(request: Request): Promise<NextResponse> {
         : null
     };
   });
+  const phiFields = [
+    canReadNik ? "nik" : null,
+    canReadDiagnosis ? "diagnosis" : null,
+    canReadContact ? "contact" : null
+  ].filter((field): field is string => Boolean(field));
+  await auditApiAccess({
+    request,
+    session: ctx.session,
+    action: phiFields.length > 0 ? "PATIENT_PHI_BULK_READ" : "PATIENT_LIST_READ",
+    detail: `${rows.length} pasien dikembalikan; field=${phiFields.join(",") || "none"}.`,
+    requestId: ctx.requestId
+  });
+
   return ok(ctx, { patients: rows, requestId: ctx.requestId });
 }

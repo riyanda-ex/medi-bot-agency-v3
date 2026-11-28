@@ -32,23 +32,29 @@ const mockEnqueueJob = vi.fn(async (..._args: unknown[]) => ({
 }));
 const mockRunAllAgents = vi.fn(async (..._args: unknown[]) => ({ runId: "run1", outcomes: [] }));
 const mockExecuteUrgentFollowUp = vi.fn(async (..._args: unknown[]) => [{ stage: 0 }]);
+const mockApprovalFindFirst = vi.fn();
+const mockUserFindUnique = vi.fn();
 
-vi.mock("next-auth", () => ({
-  getServerSession: (...args: unknown[]) => mockGetServerSession(...args)
+vi.mock("@/auth", () => ({
+  auth: (...args: unknown[]) => mockGetServerSession(...args)
 }));
-vi.mock("@/lib/auth", () => ({ authOptions: {} }));
 vi.mock("@/lib/audit", () => ({
   auditApiAccess: (...args: unknown[]) => mockAuditApiAccess(...args)
 }));
 vi.mock("@/lib/requestGuard", () => ({
+  enforceBodySize: vi.fn(async (request: Request) => ({ response: null, request })),
   enforceRateLimit: (...args: unknown[]) => mockEnforceRateLimit(...(args as [])),
   enforceSameOrigin: (...args: unknown[]) => mockEnforceSameOrigin(...(args as [])),
   getClientIp: (...args: unknown[]) => mockGetClientIp(...(args as []))
 }));
 vi.mock("@/lib/agentLog", () => ({ writeAgentLog: vi.fn() }));
-vi.mock("@/lib/approval", () => ({
-  createApproval: (...args: unknown[]) => mockCreateApproval(...args)
-}));
+vi.mock("@/lib/approval", async (importActual) => {
+  const actual = await importActual<typeof import("../lib/approval")>();
+  return {
+    ...actual,
+    createApproval: (...args: unknown[]) => mockCreateApproval(...args)
+  };
+});
 vi.mock("@/agents/reporter", () => ({
   runReporter: (...args: unknown[]) => mockRunReporter(...args)
 }));
@@ -67,7 +73,9 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     patient: { findUnique: vi.fn(async () => ({ id: "p1", name: "Budi" })) },
     visit: { create: vi.fn(async () => ({ id: "v1" })) },
-    triageLog: { findUnique: vi.fn(async () => ({ id: "t1", patientId: "p1", visitId: "v1" })) }
+    triageLog: { findUnique: vi.fn(async () => ({ id: "t1", patientId: "p1", visitId: "v1" })) },
+    auditLog: { findFirst: (...args: unknown[]) => mockApprovalFindFirst(...args) },
+    user: { findUnique: (...args: unknown[]) => mockUserFindUnique(...args) }
   }
 }));
 
@@ -77,6 +85,8 @@ import { POST as simulatePost } from "../app/api/urgent/simulate/route";
 import { POST as reportPost } from "../app/api/reports/generate/route";
 import { POST as orchestratorPost } from "../app/api/orchestrator/run/route";
 import { GET as healthGet } from "../app/api/health/route";
+import { approvalCanonicalPayload, verifyApproval } from "../lib/approval";
+import { signPayload } from "../lib/crypto";
 
 function session(role: string) {
   mockGetServerSession.mockResolvedValue({ user: { id: "u1", role, invalid: false } });
@@ -184,5 +194,27 @@ describe("API guard behavior", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe("ok");
+  });
+
+  it("verifyApproval mengembalikan channels dari rekam bertanda tangan", async () => {
+    const record = {
+      approvalId: "apr-test",
+      scope: "URGENT" as const,
+      resourceId: "t1",
+      approverId: "u1",
+      role: "DOKTER",
+      channels: ["WHATSAPP", "CALL"],
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    };
+    const canonical = approvalCanonicalPayload(record);
+    mockApprovalFindFirst.mockResolvedValueOnce({
+      detail: canonical,
+      signature: signPayload(canonical)
+    });
+    mockUserFindUnique.mockResolvedValueOnce({ role: "DOKTER", status: "AKTIF" });
+
+    const result = await verifyApproval("apr-test", "URGENT", "t1");
+    expect(result.ok).toBe(true);
+    expect(result.channels).toEqual(["WHATSAPP", "CALL"]);
   });
 });

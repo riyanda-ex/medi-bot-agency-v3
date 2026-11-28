@@ -4,8 +4,8 @@ import { NextResponse, type NextRequest } from "next/server";
 export const REQUEST_ID_HEADER = "x-request-id";
 
 export function getRequestId(request: Request | NextRequest): string {
-  const existing = request.headers.get(REQUEST_ID_HEADER)?.trim();
-  if (existing && existing.length <= 128) return existing;
+  const existing = request.headers.get(REQUEST_ID_HEADER)?.trim() ?? "";
+  if (/^[A-Za-z0-9._:-]{1,64}$/.test(existing)) return existing;
   return randomUUID();
 }
 

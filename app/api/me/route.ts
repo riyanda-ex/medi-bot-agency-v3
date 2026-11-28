@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/auth";
 import { hasPermission } from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
@@ -12,7 +11,7 @@ import { logApiRequest } from "@/lib/apiLog";
 export async function GET(request: Request): Promise<NextResponse> {
   const requestId = getRequestId(request);
   const startedAt = Date.now();
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const role = session?.user.role ?? "TIDAK_AKTIF";
   const patientId = session?.user.patientId;
   const ip = getClientIp(request);

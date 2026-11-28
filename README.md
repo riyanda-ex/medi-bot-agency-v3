@@ -5,7 +5,7 @@
 > Multi-agent clinical operations foundation for Indonesian clinics — secure by default, mock by default, auditable by design.
 
 [![CI](https://github.com/riyanda-ex/medi-bot-agency-v3/actions/workflows/ci.yml/badge.svg)](https://github.com/riyanda-ex/medi-bot-agency-v3/actions/workflows/ci.yml)
-![Node](https://img.shields.io/badge/node-22%2B-339933?logo=node.js&logoColor=white)
+![Node](https://img.shields.io/badge/node-24%2B-339933?logo=node.js&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-16.4.6-black?logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
@@ -78,7 +78,7 @@ Implemented controls:
 
 ### Prerequisites
 
-- Windows PowerShell (tested), Node.js 22+, npm 11+
+- Windows PowerShell (tested), Node.js 24+, npm 11.20.0 (`packageManager`)
 - Docker **not required** for local dev (SQLite + `SYNC_MODE=true`)
 
 ### Install & Run
@@ -95,33 +95,41 @@ Open `http://localhost:3000`.
 
 ### Local Development Accounts
 
-> For local development only. Login form does not auto-fill credentials. Production seeding is blocked unless `ALLOW_SEED=true` with a strong `SEED_PASSWORD`.
+> For local development only. Login form does not auto-fill credentials. Seed is destructive and
+> only runs with `NODE_ENV=development|test` **and** `ALLOW_DESTRUCTIVE_SEED=1`; production always
+> blocks it. The password comes from `SEED_ADMIN_PASSWORD` (or a randomly generated value printed
+> once). The value below is the `.env.example` default.
 
-| Role        | Email                        | Password      | Diagnosis Access |
-| ----------- | ---------------------------- | ------------- | ---------------- |
-| DOKTER      | `dokter@klinik.example`      | `password123` | Yes              |
-| PERAWAT     | `perawat@klinik.example`     | `password123` | Triage only      |
-| RESEPSIONIS | `resepsionis@klinik.example` | `password123` | No               |
-| ADMIN       | `admin@klinik.example`       | `password123` | Yes              |
-| PASIEN      | `pasien@klinik.example`      | `password123` | Own data         |
+| Role        | Email                        | Password                | Diagnosis Access |
+| ----------- | ---------------------------- | ----------------------- | ---------------- |
+| DOKTER      | `dokter@klinik.example`      | `dev-only-password-123` | Yes              |
+| PERAWAT     | `perawat@klinik.example`     | `dev-only-password-123` | Triage only      |
+| RESEPSIONIS | `resepsionis@klinik.example` | `dev-only-password-123` | No               |
+| ADMIN       | `admin@klinik.example`       | `dev-only-password-123` | Yes              |
+| PASIEN      | `pasien@klinik.example`      | `dev-only-password-123` | Own data         |
 
 ## Available Scripts
 
-| Command                      | Description                                                |
-| ---------------------------- | ---------------------------------------------------------- |
-| `npm run dev`                | Start Next.js development server.                          |
-| `npm run build`              | Create production build.                                   |
-| `npm run start`              | Start production server.                                   |
-| `npm run typecheck`          | Run TypeScript checks.                                     |
-| `npm test`                   | Run Vitest suite.                                          |
-| `npm run db:setup`           | Generate Prisma client, push SQLite schema, seed dev data. |
-| `npm run db:studio`          | Open Prisma Studio.                                        |
-| `npm run prisma:generate:pg` | Generate PostgreSQL Prisma schema/client.                  |
-| `npm run db:setup:pg`        | Push + seed PostgreSQL (requires `DATABASE_URL`).          |
-| `npm run queue:worker`       | Run BullMQ worker (requires `QUEUE_MODE=redis`).           |
-| `npm run verify:agents`      | Smoke-test agents and DB.                                  |
-| `npm run e2e`                | Run HTTP E2E checks against running server.                |
-| `npm run queue:check`        | Verify Redis queue returns 202 + `jobId`.                  |
+| Command                      | Description                                                 |
+| ---------------------------- | ----------------------------------------------------------- |
+| `npm run dev`                | Start Next.js development server.                           |
+| `npm run build`              | Create production build.                                    |
+| `npm run start`              | Start production server.                                    |
+| `npm run typecheck`          | Run TypeScript checks (TS6 alias).                          |
+| `npm run typecheck:7`        | Run TS7 native compiler check.                              |
+| `npm test`                   | Run Vitest suite.                                           |
+| `npm run verify:all`         | lint, format, both typechecks, tests, build, OpenAPI check. |
+| `npm run db:setup`           | Generate Prisma client, push SQLite schema, seed dev data.  |
+| `npm run db:migrate:deploy`  | Apply SQLite initial migration (fresh DB).                  |
+| `npm run db:studio`          | Open Prisma Studio.                                         |
+| `npm run prisma:generate:pg` | Generate PostgreSQL Prisma schema/client.                   |
+| `npm run db:setup:pg`        | Push + seed PostgreSQL (requires `DATABASE_URL`).           |
+| `npm run db:backup:pg`       | `pg_dump` backup with retention pruning.                    |
+| `npm run db:restore:pg`      | Confirmation-gated `pg_restore` (see docs).                 |
+| `npm run queue:worker`       | Run BullMQ worker (requires `QUEUE_MODE=redis`).            |
+| `npm run verify:agents`      | Smoke-test agents and DB.                                   |
+| `npm run e2e`                | Run HTTP E2E checks against running server.                 |
+| `npm run queue:check`        | Verify Redis queue returns 202 + `jobId`.                   |
 
 ## Project Structure
 
@@ -144,41 +152,47 @@ docs/        Architecture, API, structure, production checklist
 
 Copy `.env.example` to `.env`. Key variables:
 
-| Variable                 | Default      | Purpose                                                   |
-| ------------------------ | ------------ | --------------------------------------------------------- |
-| `WHATSAPP_PROVIDER`      | `mock`       | `mock`, `fonnte`, `wablas`                                |
-| `PHONE_PROVIDER`         | `mock`       | `mock`, `twilio`                                          |
-| `ALLOW_REAL_OUTBOUND`    | `false`      | Enables real outbound providers only with approval gates. |
-| `REQUIRE_HUMAN_APPROVAL` | `true`       | Required for real outbound; forced in production.         |
-| `QUEUE_MODE`             | `sync`       | `sync` or `redis`.                                        |
-| `REDIS_URL`              | -            | Required for Redis queue mode.                            |
-| `TRUST_PROXY`            | empty        | Trusted proxy IPs for forwarded client IP.                |
-| `SYNC_MODE`              | `true` (dev) | Must be `false` in production.                            |
+| Variable                 | Default      | Purpose                                                    |
+| ------------------------ | ------------ | ---------------------------------------------------------- |
+| `WHATSAPP_PROVIDER`      | `mock`       | `mock`, `fonnte`, `wablas`                                 |
+| `PHONE_PROVIDER`         | `mock`       | `mock`, `twilio`                                           |
+| `ALLOW_REAL_OUTBOUND`    | `false`      | Enables real outbound providers only with approval gates.  |
+| `REQUIRE_HUMAN_APPROVAL` | `true`       | Required for real outbound; forced in production.          |
+| `QUEUE_MODE`             | `sync`       | `sync` or `redis`.                                         |
+| `REDIS_URL`              | -            | Required for Redis queue mode.                             |
+| `TRUST_PROXY`            | empty        | Trusted proxy IPs for forwarded client IP.                 |
+| `SYNC_MODE`              | `true` (dev) | Must be `false` in production.                             |
+| `RATE_LIMIT_MODE`        | `auto`       | Must be `redis` in production.                             |
+| `ALLOW_DESTRUCTIVE_SEED` | `1` (dev)    | Required for seed deletes; never set in production.        |
+| `SEED_ADMIN_PASSWORD`    | dev default  | Password for seeded test users; random if omitted locally. |
 
-See `.env.example` for the full list.
+See `.env.example` for the full list. TypeScript tooling note: TS7 (`@typescript/native`) is used
+for `typecheck:7`; the TS6 alias remains only because `typescript-eslint` hard-rejects TS7.
 
 ## Production Deployment
 
 1. Follow [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md).
-2. Provision PostgreSQL + Redis (private network, auth/TLS as needed).
-3. Set strong secrets and production env guards.
-4. Run:
+2. Provision PostgreSQL + Redis (private network, auth/TLS/HA as needed). Injected secrets come from
+   a secret manager; see [`docs/EXTERNAL-INFRA.md`](docs/EXTERNAL-INFRA.md).
+3. Set strong secrets and production env guards (`RATE_LIMIT_MODE=redis`, no seed flags).
+4. Run the container stack (migrate → app ready → worker):
 
 ```powershell
-docker compose up -d
-npm run db:setup:pg
-npm run build
-npm run queue:worker
-npm run start
+docker compose --profile app up -d
 ```
 
-`QUEUE_MODE=redis` returns HTTP 202 + `jobId` for queued work; run the worker as a separate process.
+The app healthcheck uses `/api/ready`. For a host-managed deployment, deploy migrations with
+`npx prisma migrate deploy --config prisma/postgres.config.ts`, then build and start the server and
+worker separately. `QUEUE_MODE=redis` returns HTTP 202 + `jobId` for queued work.
 
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system design and data flow.
 - [`docs/API.md`](docs/API.md) — API endpoint summary.
 - [`docs/STRUCTURE.md`](docs/STRUCTURE.md) — repository layout and placement rules.
+- [`docs/PRIVACY-DATA-HANDLING.md`](docs/PRIVACY-DATA-HANDLING.md) — PDP, consent, retention, key rotation.
+- [`docs/DATA-LIFECYCLE.md`](docs/DATA-LIFECYCLE.md) — consent/deletion state machine and backups.
+- [`docs/EXTERNAL-INFRA.md`](docs/EXTERNAL-INFRA.md) — KMS, HA, SIEM/WORM, secret manager references.
 - [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md) — deployment hardening checklist.
 - [`TESTING.md`](TESTING.md) — testing protocol.
 - [`PLAN.md`](PLAN.md) — implementation plan and status.

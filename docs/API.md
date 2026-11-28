@@ -24,9 +24,19 @@ All API routes are under `app/api/*`. Mutating endpoints should be called same-o
 | POST     | `/api/urgent/approve`           |              Yes (DOKTER/ADMIN) | Create outbound approval        | HMAC-signed, 30-min TTL.                       |
 | POST     | `/api/urgent/simulate`          |    Yes (triage:write/agent:run) | Simulate/queue urgent follow-up | Validates patient/visit/log consistency.       |
 
+## Operations & Privacy Endpoints
+
+- `GET /api/health` — liveness probe (process up).
+- `GET /api/ready` — readiness probe (database/Redis checks); returns `503` when not ready and is
+  the healthcheck target used by `docker-compose.yml`.
+- Privacy endpoints for consent, deletion, and PHI audit are maintained by the repository owner;
+  they operate on `Patient.consentStatus`, consent/deletion timestamps, `deletedAt`/`anonymizedAt`,
+  and signed audit records. See `docs/DATA-LIFECYCLE.md` for the state model.
+
 ## Security Controls
 
-- **Rate limiting**: per-user/IP on sensitive endpoints.
+- **Rate limiting**: per-user/IP on sensitive endpoints, Redis-backed in production.
 - **Same-origin**: enforced on mutating sensitive endpoints.
 - **Audit logging**: access/deny/action events recorded with integrity signature.
 - **No-store**: API responses set `Cache-Control: no-store, max-age=0`.
+- **Consent gate**: real outbound providers also require `GRANTED` consent and signed approval.

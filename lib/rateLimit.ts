@@ -1,6 +1,9 @@
 /**
  * Rate limiting: Redis-backed fixed window when REDIS_URL/RATE_LIMIT_REDIS_URL is configured,
  * otherwise in-memory fallback for single-instance/dev.
+ *
+ * Di produksi fallback memori DIHAPUS: bila Redis tidak terkonfigurasi atau
+ * gagal, permintaan ditolak (fail-closed) dengan Retry-After.
  */
 
 import Redis from "ioredis";
@@ -53,6 +56,16 @@ function getRedis(): Redis | null {
   return redis;
 }
 
+/** Hasil fail-closed saat backend terpusat tidak tersedia di produksi. */
+export function unavailableRateLimitResult(windowMs: number): RateLimitResult {
+  return {
+    allowed: false,
+    remaining: 0,
+    retryAfterSeconds: Math.max(1, Math.ceil(windowMs / 1000)),
+    backend: "redis"
+  };
+}
+
 async function checkRedisRateLimit(
   key: string,
   limit: number,
@@ -77,8 +90,12 @@ async function checkRedisRateLimit(
       retryAfterSeconds: 0,
       backend: "redis"
     };
-  } catch {
+  } catch (error) {
     redisUnavailableUntil = Date.now() + 30_000;
+    logger.error("rate_limit.redis_error", {
+      reason: (error as Error).message,
+      production: isProductionRuntime()
+    });
     try {
       client.disconnect();
     } catch {}
@@ -116,7 +133,7 @@ function checkMemoryRateLimit(
   bucket.count += 1;
   return {
     allowed: true,
-    remaining: limit - bucket.count,
+    remaining: Math.max(0, limit - bucket.count),
     retryAfterSeconds: 0,
     backend: "memory"
   };
@@ -128,6 +145,18 @@ export async function checkRateLimit(
   windowMs: number,
   now = Date.now()
 ): Promise<RateLimitResult> {
+  if (isProductionRuntime()) {
+    if (process.env.RATE_LIMIT_MODE !== "redis" || !getRedisUrl()) {
+      logger.error("rate_limit.production_backend_missing", {
+        detail: "RATE_LIMIT_MODE=redis dan REDIS_URL wajib di produksi"
+      });
+      return unavailableRateLimitResult(windowMs);
+    }
+    const redisResult = await checkRedisRateLimit(key, limit, windowMs);
+    // Redis error tidak pernah jatuh ke memory fallback di produksi.
+    return redisResult ?? unavailableRateLimitResult(windowMs);
+  }
+
   const redisResult = await checkRedisRateLimit(key, limit, windowMs);
   if (redisResult) return redisResult;
   return checkMemoryRateLimit(key, limit, windowMs, now);

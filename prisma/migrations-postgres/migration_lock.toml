@@ -1,0 +1,2 @@
+# Prisma Migrate: jangan hapus atau ubah file ini secara manual.
+provider = "postgresql"

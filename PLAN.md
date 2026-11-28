@@ -33,7 +33,7 @@
 - [x] NextAuth Credentials + JWT, revalidasi database tiap request, `proxy.ts` proteksi route.
 - [x] Enkripsi AES-256-GCM + HMAC hash NIK + masking `35****xxxx`.
 - [x] Seed 20 pasien Indonesia: 3 MERAH (190/120, gula 320, saturasi 88%), 5 KUNING, 12 HIJAU. NIK diawali `35`.
-- [x] `.env.example` tanpa kunci asli; seed produksi diblokir tanpa `ALLOW_SEED=true`.
+- [x] `.env.example` tanpa kunci asli; seed hanya development/test dengan `ALLOW_DESTRUCTIVE_SEED=1`, produksi selalu diblokir.
 
 ### Langkah 2 — Agent 5 + triageRules + tes (PRIORITAS)
 
@@ -114,6 +114,22 @@ agar `npm audit` = 0 vulnerability.
 - [x] Fitur tambahan: `/api/me`, `/api/chatbot`, dispatcher notifikasi, dashboard RBAC + pasien unik.
 - [x] CI: `permissions: contents: read`, secrets throwaway yang kuat, job worker BullMQ dengan 202 + `jobId`, E2E dari seed bersih.
 - [x] Dokumen diselaraskan: 28 tes, 17 model, Next.js 16.4.6, cron env-driven, `DATABASE_PROVIDER` dihapus.
+
+---
+
+## 6b. Hardening ops & data-at-rest
+
+- [x] Dockerfile: Node 24 Alpine, standalone output, non-root, dumb-init, script worker + `tsx` tersedia.
+- [x] Compose: healthcheck `/api/ready`, gate migrasi → app → worker, volume data, profil `ha`, `stop_grace_period`.
+- [x] Seed destruktif hanya development/test + `ALLOW_DESTRUCTIVE_SEED=1`; kata sandi dari `SEED_ADMIN_PASSWORD` (atau acak sekali).
+- [x] Migrasi awal SQLite & PostgreSQL beserta field consent/retention/deletion dan `sentAt`/`expiresAt`.
+- [x] Backup/restore PostgreSQL dengan retensi dan konfirmasi eksplisit.
+- [x] CI: Node 24, npm 11.20.0, action SHA-pinned, `npm ci`, verify:all, test:ci, audit, tanpa secret produksi.
+- [x] Dokumen privasi: PDP, lifecycle data, KMS/secret manager, SIEM/WORM, checklist, threat model.
+- [ ] Infrastruktur nyata (KMS, HA, SIEM/WORM, DPA) tetap menjadi tanggung jawab operator; lihat `docs/EXTERNAL-INFRA.md`.
+
+Catatan tooling: TS7 (`@typescript/native`) dipakai untuk `typecheck:7`; alias TS6 tetap ada hanya karena
+`typescript-eslint` menolak TS7.
 
 ---
 

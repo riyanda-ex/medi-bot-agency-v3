@@ -44,6 +44,14 @@ model Patient {
   distanceKm     Float            @default(5)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+  consentStatus        String   @default("PENDING")
+  consentAt            DateTime?
+  consentRevokedAt     DateTime?
+  retentionUntil       DateTime?
+  deletionRequestedAt  DateTime?
+  deletionReason       String?
+  deletedAt            DateTime?
+  anonymizedAt         DateTime?
   users          User[]           @relation("UserPatient")
   visits         Visit[]
   medicalRecords MedicalRecord[]
@@ -241,6 +249,8 @@ model Report {
   recipients    String?
   status        String
   createdAt     DateTime @default(now())
+  sentAt        DateTime?
+  expiresAt     DateTime?
 }
 
 model Notification {

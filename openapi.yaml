@@ -3,8 +3,9 @@ info:
   title: MediBot Clinical Operations Platform API
   version: 0.1.0
   description: |
-    Internal API summary for MediBot Clinical Operations Platform. This spec documents primary endpoints;
-    behavior is enforced by server-side auth, RBAC, rate limits, and approval gates.
+    Internal API summary for MediBot Clinical Operations Platform. Every endpoint is
+    protected by server-side session validation, RBAC, request IDs, audit logging and
+    (for state-changing requests) same-origin/CSRF enforcement. PHI is redacted per role.
 servers:
   - url: http://localhost:3000
 security:
@@ -14,12 +15,13 @@ components:
     cookieAuth:
       type: apiKey
       in: cookie
-      name: next-auth.session-token
+      name: authjs.session-token
   schemas:
     Error:
       type: object
       properties:
         error: { type: string }
+        requestId: { type: string }
     Health:
       type: object
       properties:
@@ -38,7 +40,38 @@ components:
             properties:
               ok: { type: boolean }
               detail: { type: string }
+    Consent:
+      type: object
+      properties:
+        patientId: { type: string }
+        consentStatus: { type: string, enum: [PENDING, GRANTED, REVOKED] }
+        consentAt: { type: string, format: date-time, nullable: true }
+        consentRevokedAt: { type: string, format: date-time, nullable: true }
+        retentionUntil: { type: string, format: date-time, nullable: true }
+    PhiAuditEntry:
+      type: object
+      properties:
+        id: { type: string }
+        actorId: { type: string }
+        action: { type: string }
+        role: { type: string }
+        targetPatientId: { type: string }
+        ipAddress: { type: string }
+        path: { type: string }
+        detail: { type: string }
+        createdAt: { type: string, format: date-time }
 paths:
+  /api/auth/{...nextauth}:
+    get:
+      summary: NextAuth v5 session/provider/callback handler
+      security: []
+      responses:
+        "200": { description: Session or provider metadata }
+    post:
+      summary: NextAuth v5 sign-in / sign-out endpoint
+      security: []
+      responses:
+        "200": { description: Authentication result }
   /api/health:
     get:
       summary: Liveness check
@@ -51,7 +84,7 @@ paths:
               schema: { $ref: "#/components/schemas/Health" }
   /api/ready:
     get:
-      summary: Readiness check
+      summary: Readiness check (database, Redis, migrations, secrets)
       security: []
       responses:
         "200":
@@ -66,7 +99,7 @@ paths:
               schema: { $ref: "#/components/schemas/Ready" }
   /api/chatbot:
     post:
-      summary: Generic education chatbot
+      summary: Generic education chatbot (no PHI accepted)
       requestBody:
         required: true
         content:
@@ -79,61 +112,120 @@ paths:
       responses:
         "200": { description: Reply }
         "401":
-          {
-            description: Unauthorized,
-            content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
-          }
+          description: Unauthorized
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   /api/me:
     get:
-      summary: Current patient data
+      summary: Current patient data (own record only)
       responses:
         "200": { description: Patient data }
         "403": { description: Forbidden }
+  /api/me/consent:
+    get:
+      summary: Read consent and retention status for the current patient
+      parameters:
+        - in: query
+          name: patientId
+          required: false
+          description: Only for ADMIN/DOKTER with object-level access
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: Consent status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Consent" }
+        "403": { description: Forbidden }
+    put:
+      summary: Grant or revoke data-processing consent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [consent]
+              properties:
+                patientId: { type: string, maxLength: 64 }
+                consent: { type: string, enum: [GRANTED, REVOKED] }
+      responses:
+        "200":
+          description: Updated consent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Consent" }
+        "403": { description: Forbidden }
   /api/patients:
     get:
-      summary: List patients (masked)
+      summary: List patients (masked identifiers, role-redacted)
       responses:
         "200": { description: Patient list }
         "403": { description: Forbidden }
   /api/patients/{id}/record:
     get:
-      summary: Patient records (role-redacted)
+      summary: Patient records (role-redacted, object-level access enforced)
       parameters:
         - in: path
           name: id
           required: true
-          schema: { type: string }
+          schema: { type: string, maxLength: 64 }
       responses:
         "200": { description: Records }
         "403": { description: Forbidden }
+  /api/patients/{id}/privacy:
+    delete:
+      summary: Soft-delete/anonymize a patient record after consent revocation or retention expiry
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, maxLength: 64 }
+        - in: header
+          name: x-confirm-privacy-delete
+          required: true
+          description: Must repeat the patient ID to prevent accidental deletion
+          schema: { type: string, maxLength: 64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 200 }
+      responses:
+        "200": { description: Patient anonymized }
+        "400": { description: Confirmation mismatch or retention not satisfied }
+        "403": { description: Forbidden }
   /api/triage:
     post:
-      summary: Evaluate triage
+      summary: Evaluate triage and persist a triage log
       responses:
         "200": { description: Triage result }
         "403": { description: Forbidden }
   /api/urgent/simulate:
     post:
-      summary: Simulate or queue urgent follow-up
+      summary: Simulate or queue urgent follow-up (deduped, approval-gated)
       responses:
         "200": { description: Simulated }
         "202": { description: Queued }
         "403": { description: Forbidden }
   /api/urgent/approve:
     post:
-      summary: Create outbound approval
+      summary: Create or verify an outbound communication approval
       responses:
         "200": { description: Approval created }
         "403": { description: Forbidden }
   /api/reports/generate:
     post:
-      summary: Generate daily report
+      summary: "Generate daily report (status lifecycle PENDING/GENERATED/SENT/FAILED/EXPIRED)"
       responses:
         "200": { description: Report generated }
         "403": { description: Forbidden }
   /api/reports/download:
     get:
-      summary: Download report
+      summary: Download a generated report
       parameters:
         - in: query
           name: type
@@ -142,9 +234,30 @@ paths:
       responses:
         "200": { description: File download }
         "403": { description: Forbidden }
+  /api/audit/phi:
+    get:
+      summary: Read PHI access audit trail (ADMIN only, redacted detail)
+      parameters:
+        - in: query
+          name: patientId
+          required: false
+          schema: { type: string, maxLength: 64 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: Audit entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PhiAuditEntry" }
+        "403": { description: Forbidden }
   /api/orchestrator/run:
     post:
-      summary: Run or queue orchestrator
+      summary: Run or queue the multi-agent orchestrator
       responses:
         "200": { description: Run result }
         "202": { description: Queued }

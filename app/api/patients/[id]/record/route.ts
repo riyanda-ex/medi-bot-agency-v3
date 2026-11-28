@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
-import { canViewDiagnosis, hasPermission } from "@/lib/rbac";
+import {
+  assertPatientAccess,
+  canViewDiagnosis,
+  hasPermission,
+  PatientAccessError
+} from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { redactRecordForRole } from "@/agents/securityGuard";
-import { createApiContext, guardRateLimit, ok } from "@/lib/apiRoute";
-import { jsonWithRequestId } from "@/lib/requestContext";
-import { logApiRequest } from "@/lib/apiLog";
+import { createApiContext, deny, guardRateLimit, ok, patientIdSchema } from "@/lib/apiRoute";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -15,36 +18,61 @@ type RouteContext = { params: Promise<{ id: string }> };
  */
 export async function GET(request: Request, context: RouteContext): Promise<NextResponse> {
   const ctx = await createApiContext(request, "/api/patients/[id]/record");
-  const { id } = await context.params;
+  const { id: rawId } = await context.params;
+  const parsedId = patientIdSchema.safeParse(rawId);
+  if (!parsedId.success) {
+    return deny(ctx, 400, "ID pasien tidak valid.", "RECORD_INVALID_ID");
+  }
+  const id = parsedId.data;
 
   if (!hasPermission(ctx.role, "patient:read") || ctx.sessionInvalid) {
-    await auditApiAccess({
-      request,
-      session: ctx.session,
-      action: "RECORD_DENIED",
-      targetPatientId: id,
-      detail: `Peran ${ctx.role} mencoba membaca rekam medis.`,
-      requestId: ctx.requestId
-    });
-    void logApiRequest({
-      requestId: ctx.requestId,
-      method: "GET",
-      path: ctx.path,
-      statusCode: 403,
-      durationMs: Date.now() - ctx.startedAt,
-      ip: ctx.ip,
-      userId: ctx.userId,
-      error: "forbidden"
-    });
-    return jsonWithRequestId(
-      ctx.requestId,
-      { error: "Akses ditolak.", requestId: ctx.requestId },
-      { status: 403 }
+    return deny(
+      ctx,
+      403,
+      "Akses ditolak.",
+      "RECORD_DENIED",
+      `Peran ${ctx.role} mencoba membaca rekam medis ${id}.`
     );
   }
 
   const limited = await guardRateLimit(ctx, `record:${ctx.userId ?? ctx.ip}`, 120, 60_000);
   if (limited) return limited;
+
+  // Object-level access: peran saja tidak cukup, pasien harus masih dalam scope sesi.
+  const scope = await prisma.patient
+    .findUnique({
+      where: { id },
+      select: {
+        id: true,
+        users: { where: { id: ctx.userId ?? "" }, select: { id: true } },
+        visits: {
+          orderBy: { visitDate: "desc" },
+          take: 1,
+          select: { doctorId: true }
+        }
+      }
+    })
+    .catch(() => null);
+  if (!scope) return deny(ctx, 404, "Pasien tidak ditemukan.", "RECORD_NOT_FOUND");
+  try {
+    assertPatientAccess(
+      ctx.role,
+      ctx.userId,
+      id,
+      ctx.session?.user.patientId ?? scope.users[0]?.id,
+      scope.visits[0]?.doctorId,
+      ctx.session?.user.doctorId
+    );
+  } catch (error) {
+    if (!(error instanceof PatientAccessError)) throw error;
+    return deny(
+      ctx,
+      403,
+      "Akses ditolak: pasien di luar scope Anda.",
+      "RECORD_OBJECT_DENIED",
+      `Peran ${ctx.role} mencoba membaca rekam medis ${id}.`
+    );
+  }
 
   const records = await prisma.medicalRecord.findMany({
     where: { patientId: id },

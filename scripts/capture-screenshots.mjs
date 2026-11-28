@@ -100,8 +100,16 @@ async function setValue(send, selector, value) {
     await sleep(3500);
     await screenshot(send, "login.png");
 
-    await setValue(send, 'input[name="email"], input[type="email"]', "dokter@klinik.example");
-    await setValue(send, 'input[name="password"], input[type="password"]', "password123");
+    const screenshotPassword = process.env.E2E_PASSWORD;
+    if (!screenshotPassword) {
+      throw new Error("E2E_PASSWORD wajib diisi untuk capture-screenshots.");
+    }
+    await setValue(
+      send,
+      'input[name="email"], input[type="email"]',
+      process.env.E2E_DOCTOR_EMAIL ?? "dokter@klinik.example"
+    );
+    await setValue(send, 'input[name="password"], input[type="password"]', screenshotPassword);
     await send("Runtime.evaluate", {
       expression: `document.querySelector('button[type="submit"]')?.click(); 'clicked'`,
       returnByValue: true
