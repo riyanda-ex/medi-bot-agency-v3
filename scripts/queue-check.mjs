@@ -64,16 +64,26 @@ async function main() {
     headers: { Accept: "application/json", ...auth }
   });
   const run = await readJson(runResponse, "Manual Run");
+  const runQueued = run?.queued === true;
   await check(
-    "Manual Run masuk antrean (202)",
-    runResponse.status === 202,
-    `status=${runResponse.status} body=${JSON.stringify(run)}`
+    "Manual Run diterima (202 redis / 200 sync)",
+    runQueued ? runResponse.status === 202 : runResponse.status === 200,
+    `status=${runResponse.status} body=${JSON.stringify(run).slice(0, 200)}`
   );
-  await check(
-    "Manual Run memiliki jobId",
-    typeof run?.jobId === "string" && run.jobId.length > 0,
-    run?.jobId
-  );
+  if (runQueued) {
+    await check(
+      "Manual Run memiliki jobId",
+      typeof run.jobId === "string" && run.jobId.length > 0,
+      run.jobId
+    );
+  } else {
+    const outcomes = run?.outcomes ?? [];
+    await check(
+      "Manual Run sync: semua agent sukses",
+      outcomes.length === 6 && outcomes.every((item) => item.status === "SUCCESS"),
+      `${outcomes.length} agent`
+    );
+  }
 
   const patientsResponse = await fetch(`${BASE}/api/patients`, {
     headers: { Accept: "application/json", ...auth }
@@ -91,18 +101,27 @@ async function main() {
     body: JSON.stringify({ patientId: patients[0].id })
   });
   const simulated = await readJson(simulateResponse, "Simulasi urgent");
+  const simulateQueued = simulated?.queued === true;
   await check(
-    "Simulasi urgent masuk antrean (202)",
-    simulateResponse.status === 202,
-    `status=${simulateResponse.status} body=${JSON.stringify(simulated)}`
+    "Simulasi urgent diterima (202 redis / 200 sync)",
+    simulateQueued ? simulateResponse.status === 202 : simulateResponse.status === 200,
+    `status=${simulateResponse.status} body=${JSON.stringify(simulated).slice(0, 200)}`
   );
-  await check(
-    "Simulasi urgent memiliki jobId",
-    typeof simulated?.jobId === "string" && simulated.jobId.length > 0,
-    simulated?.jobId
-  );
+  if (simulateQueued) {
+    await check(
+      "Simulasi urgent memiliki jobId",
+      typeof simulated.jobId === "string" && simulated.jobId.length > 0,
+      simulated.jobId
+    );
+  } else {
+    await check(
+      "Simulasi urgent sync: log dibuat",
+      typeof simulated?.totalLogs === "number" && simulated.totalLogs > 0,
+      `${simulated?.totalLogs} log`
+    );
+  }
 
-  console.log("\nQUEUE MODE OK: producer dan worker terpisah aktif.");
+  console.log("\nQUEUE MODE OK: antrean redis atau mode sinkron aktif.");
 }
 
 main().catch((error) => {

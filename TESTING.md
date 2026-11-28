@@ -6,8 +6,9 @@
 npm test
 ```
 
-Harapan: **28/28 tes lulus** — 10 tes triage (`tests/triage.test.ts`), 3 tes helper Bug Hunter
-(`fixes/fixes.test.ts`), dan 15 tes hardening (`tests/hardening.test.ts`).
+Harapan: **semua tes lulus** — mencakup triage (`tests/triage.test.ts`), helper Bug Hunter
+(`fixes/fixes.test.ts`), hardening (`tests/hardening.test.ts`), dan password seed lokal
+(`tests/seed-password.test.ts`).
 
 Cakupan triage:
 

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { encryptField, fieldHash, maskNik } from "../lib/crypto";
 import { evaluateTriage } from "../lib/triageRules";
 import { isProductionRuntime, isProductionSecret } from "../lib/env";
+import { resolveSeedPassword } from "./seed-password";
 
 const prisma = new PrismaClient();
 
@@ -141,7 +142,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const seedPassword = process.env.SEED_PASSWORD ?? "password123";
+  const seedPassword = resolveSeedPassword(process.env.SEED_PASSWORD);
   if (production && !isProductionSecret(seedPassword)) {
     throw new Error("Produksi mensyaratkan SEED_PASSWORD acak minimal 32 byte untuk akun uji.");
   }
