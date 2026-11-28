@@ -18,7 +18,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "prestart": "node scripts/prepare-standalone.mjs",
+    "start": "node .next/standalone/server.js",
     "typecheck": "tsc --noEmit",
     "typecheck:7": "node node_modules/@typescript/native/bin/tsc --noEmit",
     "test": "vitest run",
