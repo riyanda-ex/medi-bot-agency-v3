@@ -31,7 +31,13 @@ const nextConfig = {
     "@prisma/client",
     "bcryptjs",
     "bullmq",
-    "ioredis"
+    // pdfkit memuat font standar dari direktori paket secara runtime; bundling
+    // membuat MODULE_NOT_FOUND di standalone. exceljs/nodemailer juga punya
+    // aset runtime, jadi ketiganya sengaja dipakai lewat require native.
+    "exceljs",
+    "ioredis",
+    "nodemailer",
+    "pdfkit"
   ],
   async headers() {
     return [

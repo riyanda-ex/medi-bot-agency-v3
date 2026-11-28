@@ -187,7 +187,7 @@ async function main() {
     generateResponse.status === 200 &&
       typeof generated.summary?.newPatients === "number" &&
       typeof generated.summary?.visits7Days?.length === "number",
-    `newPatients=${generated.summary?.newPatients}`
+    `status=${generateResponse.status} newPatients=${generated.summary?.newPatients ?? "-"} body=${JSON.stringify(generated).slice(0, 300)}`
   );
 
   const pdfResponse = await fetch(`${BASE}/api/reports/download?type=pdf`, { headers: doctorAuth });
