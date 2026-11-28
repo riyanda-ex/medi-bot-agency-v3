@@ -169,7 +169,7 @@ jobs:
       - name: Tunggu worker dan server siap
         run: |
           for i in $(seq 1 30); do
-            if grep -q "Worker aktif" worker.log && curl -fsS http://localhost:3000/api/ready > /dev/null; then exit 0; fi
+            if grep -q '"event":"queue.worker.ready"' worker.log && curl -fsS http://localhost:3000/api/ready > /dev/null; then exit 0; fi
             sleep 2
           done
           cat worker.log
