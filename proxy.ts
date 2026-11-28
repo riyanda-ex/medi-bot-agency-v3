@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { getToken } from "next-auth/jwt";
 import { NextResponse, type NextRequest } from "next/server";
+import { isProxySessionValid } from "@/lib/sessionGuard";
 
 function buildCsp(nonce: string, isDev: boolean): string {
   const script = [`'self'`, `'nonce-${nonce}'`, "'strict-dynamic'"];
@@ -32,7 +33,10 @@ function applySecurity(response: NextResponse, request: NextRequest, csp: string
   response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
   response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
   response.headers.set("X-DNS-Prefetch-Control", "off");
-  if (request.nextUrl.protocol === "https:") {
+  const httpsIntent =
+    request.nextUrl.protocol === "https:" ||
+    (process.env.AUTH_URL ?? process.env.NEXTAUTH_URL)?.startsWith("https://") === true;
+  if (httpsIntent) {
     response.headers.set(
       "Strict-Transport-Security",
       "max-age=63072000; includeSubDomains; preload"
@@ -42,12 +46,16 @@ function applySecurity(response: NextResponse, request: NextRequest, csp: string
 }
 
 function sessionCookieName(request: NextRequest): string {
-  if (request.cookies.get("__Secure-next-auth.session-token"))
-    return "__Secure-next-auth.session-token";
-  if (request.cookies.get("next-auth.session-token")) return "next-auth.session-token";
+  if (request.cookies.get("__Secure-authjs.session-token")) return "__Secure-authjs.session-token";
+  if (request.cookies.get("authjs.session-token")) return "authjs.session-token";
   return request.nextUrl.protocol === "https:"
-    ? "__Secure-next-auth.session-token"
-    : "next-auth.session-token";
+    ? "__Secure-authjs.session-token"
+    : "authjs.session-token";
+}
+
+function safeRequestId(request: NextRequest): string {
+  const raw = request.headers.get("x-request-id")?.trim() ?? "";
+  return /^[A-Za-z0-9._:-]{1,64}$/.test(raw) ? raw : crypto.randomUUID();
 }
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
@@ -58,7 +66,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
 
-  const requestId = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+  const requestId = safeRequestId(request);
   requestHeaders.set("x-request-id", requestId);
 
   const { pathname } = request.nextUrl;
@@ -70,10 +78,10 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   if (protectedPath) {
     const token = await getToken({
       req: request,
-      secret: process.env.NEXTAUTH_SECRET,
+      secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
       cookieName: sessionCookieName(request)
     });
-    if (!token || token.invalid === true) {
+    if (!token || !(await isProxySessionValid(token))) {
       response = NextResponse.redirect(new URL("/login?error=sesi", request.url));
     } else {
       const role = String(token.role ?? "TIDAK_AKTIF");

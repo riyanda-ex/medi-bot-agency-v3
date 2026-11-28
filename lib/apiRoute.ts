@@ -1,11 +1,39 @@
 import { NextResponse } from "next/server";
-import { getServerSession, type Session } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import type { Session } from "next-auth";
+import { z } from "zod";
+import { auth } from "@/auth";
 import { hasPermission, type Role } from "@/lib/rbac";
+import { assertSecureEnvironment } from "@/lib/env";
 import { auditApiAccess } from "@/lib/audit";
-import { enforceRateLimit, enforceSameOrigin, getClientIp } from "@/lib/requestGuard";
+import {
+  enforceBodySize,
+  enforceRateLimit,
+  enforceSameOrigin,
+  getClientIp
+} from "@/lib/requestGuard";
 import { getRequestId, jsonWithRequestId, withRequestId } from "@/lib/requestContext";
 import { logApiRequest } from "@/lib/apiLog";
+
+/**
+ * ID dari parameter/body harus terlihat seperti cuid di produksi. Di dev/CI,
+ * ID pendek ("p1", "t1") tetap diterima agar suite uji lama berjalan.
+ */
+const resourceIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9_-]+$/, "ID mengandung karakter tidak diizinkan")
+  .refine(
+    (value) => process.env.NODE_ENV !== "production" || /^[a-z][a-z0-9]{19,29}$/i.test(value),
+    "Format ID tidak valid"
+  );
+
+export const patientIdSchema = resourceIdSchema;
+export const reportIdSchema = resourceIdSchema;
+export const triageLogIdSchema = resourceIdSchema;
+export const visitIdSchema = resourceIdSchema;
+export const approvalIdSchema = resourceIdSchema;
 
 export interface ApiContext {
   request: Request;
@@ -20,10 +48,12 @@ export interface ApiContext {
 }
 
 export async function createApiContext(request: Request, path: string): Promise<ApiContext> {
+  // Fail-closed: produksi tanpa konfigurasi aman tidak boleh membuka endpoint API.
+  if (process.env.NODE_ENV === "production") assertSecureEnvironment();
   const requestId = getRequestId(request);
   const startedAt = Date.now();
   const ip = getClientIp(request);
-  const session = (await getServerSession(authOptions)) as Session | null;
+  const session = (await auth()) as Session | null;
   const role = (session?.user.role ?? "TIDAK_AKTIF") as Role | "TIDAK_AKTIF";
   const userId = session?.user?.id;
   const sessionInvalid = session?.user?.invalid === true;
@@ -88,6 +118,28 @@ export function guardOrigin(ctx: ApiContext): NextResponse | null {
     error: "origin"
   });
   return withRequestId(blocked, ctx.requestId);
+}
+
+export async function guardBodySize(
+  ctx: ApiContext,
+  maxBytes?: number
+): Promise<NextResponse | null> {
+  const guarded = await enforceBodySize(ctx.request, maxBytes);
+  if (guarded.response) {
+    void logApiRequest({
+      requestId: ctx.requestId,
+      method: ctx.request.method,
+      path: ctx.path,
+      statusCode: 413,
+      durationMs: Date.now() - ctx.startedAt,
+      ip: ctx.ip,
+      userId: ctx.userId,
+      error: "body_too_large"
+    });
+    return withRequestId(guarded.response, ctx.requestId);
+  }
+  ctx.request = guarded.request;
+  return null;
 }
 
 export async function guardRateLimit(

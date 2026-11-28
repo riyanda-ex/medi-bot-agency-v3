@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { maskNik } from "@/lib/crypto";
+import { auditApiAccess } from "@/lib/audit";
 import { createApiContext, deny, guardRateLimit, ok, requirePermission } from "@/lib/apiRoute";
+
+const querySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z
+    .string()
+    .trim()
+    .min(1)
+    .max(64)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional()
+});
 
 export async function GET(request: Request): Promise<NextResponse> {
   const ctx = await createApiContext(request, "/api/patients");
@@ -14,6 +26,13 @@ export async function GET(request: Request): Promise<NextResponse> {
     60_000
   );
   if (limited) return limited;
+  const parsed = querySchema.safeParse(
+    Object.fromEntries(new URL(request.url).searchParams.entries())
+  );
+  if (!parsed.success)
+    return deny(ctx, 400, "Parameter pagination tidak valid.", "PATIENT_INVALID_QUERY");
+  const { limit, cursor } = parsed.data;
+
   const canReadNik = requirePermission(ctx, "patient:read_nik");
   const canReadDiagnosis = requirePermission(ctx, "patient:read_diagnosis");
   const canReadContact = requirePermission(ctx, "patient:read_contact");
@@ -25,16 +44,20 @@ export async function GET(request: Request): Promise<NextResponse> {
         include: { triageLogs: { orderBy: { createdAt: "desc" }, take: 1 } }
       }
     },
-    orderBy: { createdAt: "desc" },
-    take: 100
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: limit + 1,
+    ...(cursor ? { skip: 1, cursor: { id: cursor } } : {})
   });
-  const rows = patients.map((p) => {
+  const nextCursor = patients.length > limit ? (patients[limit - 1]?.id ?? null) : null;
+  const page = patients.slice(0, limit);
+  const rows = page.map((p) => {
     const lastVisit = p.visits[0];
     const lastTriage = lastVisit?.triageLogs[0];
     return {
       id: p.id,
       name: p.name,
-      nik: canReadNik ? maskNik(p.nikEncrypted) : "************",
+      // nikMasked sudah disimpan saat import; jangan pernah mask ciphertext.
+      nik: canReadNik ? p.nikMasked : "************",
       birthDate: p.birthDate.toISOString(),
       gender: "-",
       phone: canReadContact ? "********" : "********",
@@ -59,5 +82,18 @@ export async function GET(request: Request): Promise<NextResponse> {
         : null
     };
   });
-  return ok(ctx, { patients: rows, requestId: ctx.requestId });
+  const phiFields = [
+    canReadNik ? "nik" : null,
+    canReadDiagnosis ? "diagnosis" : null,
+    canReadContact ? "contact" : null
+  ].filter((field): field is string => Boolean(field));
+  await auditApiAccess({
+    request,
+    session: ctx.session,
+    action: phiFields.length > 0 ? "PATIENT_PHI_BULK_READ" : "PATIENT_LIST_READ",
+    detail: `${rows.length} pasien dikembalikan; field=${phiFields.join(",") || "none"}.`,
+    requestId: ctx.requestId
+  });
+
+  return ok(ctx, { patients: rows, limit, nextCursor, requestId: ctx.requestId });
 }

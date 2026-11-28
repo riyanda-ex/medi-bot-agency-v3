@@ -9,19 +9,22 @@ on:
   pull_request:
 
 env:
-  # Nilai berikut hanya untuk CI, bukan kunci produksi. Panjang >= 32 byte.
+  # Semua nilai di bawah adalah throwaway CI, BUKAN kunci produksi.
+  # Jangan pernah mengisi ini dengan secret lingkungan nyata.
+  CI: "true"
   NEXTAUTH_URL: http://localhost:3000
   NEXTAUTH_SECRET: Zk9pQ2xVnM4dR7sY1uJ6hB3tK8wE5aN0cF2oL9zX4vU
   FIELD_ENCRYPTION_KEY: Vm8tR5xQ2pL7nB4sW1yK9dJ6hF3aN0cE8uZ1oX5vT7qR
+  APP_SIGNING_KEY: Qw7uJ4mZ1pX6vB9yT3nK8hD2rF5aL0cS
   SYNC_MODE: "true"
   ALLOW_REAL_OUTBOUND: "false"
   REQUIRE_HUMAN_APPROVAL: "true"
   WHATSAPP_PROVIDER: mock
   PHONE_PROVIDER: mock
   QUEUE_MODE: sync
-  # Kredensial uji produksi di CI saja: kuat, throwaway, dan tidak dipakai di runtime nyata.
-  ALLOW_SEED: "true"
-  SEED_PASSWORD: Tn8wQ3xR6mV2kP9sY4dH7bJ1fL5cZ0aG
+  # Seed destruktif hanya berjalan di development/test dengan konfirmasi ini.
+  ALLOW_DESTRUCTIVE_SEED: "1"
+  SEED_ADMIN_PASSWORD: Tn8wQ3xR6mV2kP9sY4dH7bJ1fL5cZ0aG
   E2E_PASSWORD: Tn8wQ3xR6mV2kP9sY4dH7bJ1fL5cZ0aG
   DATABASE_URL: "file:./dev.db"
 
@@ -30,22 +33,27 @@ jobs:
     name: Verifikasi Windows PowerShell
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-node@v4.4.0
+      # Actions dipin ke commit; komentar menunjukkan tag rilisnya.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
+      - name: Pin npm sesuai packageManager
+        run: npm install -g npm@11.20.0
       - run: npm ci
+      - run: npm run prisma:generate
       - run: npm run db:setup
-      - run: npm run lint
-      - run: npm run format:check
-      - run: npm run typecheck
+      # tests/data-lifecycle.test.ts memeriksa skema PostgreSQL hasil generate;
+      # buat file turunannya sebelum verify:all tanpa mengganti client SQLite.
+      - run: node scripts/sync-postgres-schema.mjs
+      - run: npm run verify:all
       - run: npm run test:ci
       - run: npm run openapi:check
-      - run: npm run build
+      - run: npm run prisma:generate:pg
       - run: npm audit --audit-level=high
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && hashFiles('coverage/**') != ''
         with:
           name: coverage-windows
           path: coverage
@@ -80,25 +88,28 @@ jobs:
       DATABASE_URL: postgresql://medibot:medibot_ci_password@localhost:5432/medibot?schema=public
       REDIS_URL: redis://localhost:6379
       SYNC_MODE: "false"
+      RATE_LIMIT_MODE: redis
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-node@v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
+      - name: Pin npm sesuai packageManager
+        run: npm install -g npm@11.20.0
       - run: npm ci
       - run: npm run prisma:generate:pg
-      - run: npx prisma db push --schema prisma/schema.postgres.prisma
+      - run: npx prisma migrate deploy --config prisma/postgres.config.ts
       - run: npm run db:seed
       - run: npm run build
       - name: Jalankan server produksi
         run: |
-          nohup npm run start -- -p 3000 > server.log 2>&1 &
+          PORT=3000 nohup npm run start > server.log 2>&1 &
           echo $! > server.pid
       - name: Tunggu server siap
         run: |
           for i in $(seq 1 30); do
-            if curl -fsS http://localhost:3000/login > /dev/null; then exit 0; fi
+            if curl -fsS http://localhost:3000/api/ready > /dev/null; then exit 0; fi
             sleep 2
           done
           cat server.log
@@ -139,27 +150,30 @@ jobs:
       REDIS_URL: redis://localhost:6379
       SYNC_MODE: "false"
       QUEUE_MODE: redis
+      RATE_LIMIT_MODE: redis
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-node@v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
+      - name: Pin npm sesuai packageManager
+        run: npm install -g npm@11.20.0
       - run: npm ci
       - run: npm run prisma:generate:pg
-      - run: npx prisma db push --schema prisma/schema.postgres.prisma
+      - run: npx prisma migrate deploy --config prisma/postgres.config.ts
       - run: npm run db:seed
       - run: npm run build
       - name: Jalankan worker dan server
         run: |
           nohup npm run queue:worker > worker.log 2>&1 &
           echo $! > worker.pid
-          nohup npm run start -- -p 3000 > server.log 2>&1 &
+          PORT=3000 nohup npm run start > server.log 2>&1 &
           echo $! > server.pid
       - name: Tunggu worker dan server siap
         run: |
           for i in $(seq 1 30); do
-            if grep -q "Worker aktif" worker.log && curl -fsS http://localhost:3000/login > /dev/null; then exit 0; fi
+            if grep -q '"event":"queue.worker.ready"' worker.log && curl -fsS http://localhost:3000/api/ready > /dev/null; then exit 0; fi
             sleep 2
           done
           cat worker.log

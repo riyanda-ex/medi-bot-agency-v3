@@ -1,15 +1,29 @@
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { canViewDiagnosis, hasPermission, normalizeRole } from "../lib/rbac";
-import { getRequestIp } from "../lib/audit";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  assertPatientAccess,
+  canAccessPatient,
+  canViewDiagnosis,
+  hasPermission,
+  normalizeRole
+} from "../lib/rbac";
+import { getRequestIp, isTrustedProxyHop } from "../lib/audit";
 import { normalizePhone, resolveWhatsAppProvider, sendWhatsApp } from "../lib/whatsapp";
 import { resolvePhoneProvider } from "../lib/phone";
 import { buildWhatsappMessage } from "../agents/urgentCaller";
 import { chatbotReply } from "../agents/engagement";
 import { buildJobOptions, isQueueEnabled, signJobPayload, verifyJobPayload } from "../lib/queue";
-import { isPlaceholderSecret, isStrongSecret } from "../lib/env";
+import {
+  assertSecureEnvironment,
+  isKnownCiSecret,
+  isPlaceholderSecret,
+  isProductionSecret,
+  isStrongSecret
+} from "../lib/env";
 import { resolveReportPath } from "../lib/reportFiles";
 import { checkRateLimit } from "../lib/rateLimit";
+import { redactLogFields } from "../lib/logger";
 
 const watchedEnv = [
   "ALLOW_REAL_OUTBOUND",
@@ -18,8 +32,20 @@ const watchedEnv = [
   "FONNTE_TOKEN",
   "QUEUE_MODE",
   "REDIS_URL",
+  "RATE_LIMIT_REDIS_URL",
+  "RATE_LIMIT_MODE",
   "SYNC_MODE",
-  "TRUST_PROXY"
+  "TRUST_PROXY",
+  "NODE_ENV",
+  "NEXT_PHASE",
+  "CI",
+  "GITHUB_ACTIONS",
+  "APP_SIGNING_KEY",
+  "NEXTAUTH_SECRET",
+  "AUTH_SECRET",
+  "FIELD_ENCRYPTION_KEY",
+  "NEXTAUTH_URL",
+  "REQUIRE_HUMAN_APPROVAL"
 ] as const;
 
 const originalEnv = new Map<string, string | undefined>(
@@ -177,5 +203,190 @@ describe("Hardening produksi - enkripsi, audit, dan antrean", () => {
       expect((await checkRateLimit(key, 8, 60_000)).allowed).toBe(true);
     }
     expect((await checkRateLimit(key, 8, 60_000)).allowed).toBe(false);
+  });
+
+  it("secret DEV/CI dan nilai CI default ditolak di produksi", () => {
+    delete process.env.CI;
+    delete process.env.GITHUB_ACTIONS;
+    expect(isProductionSecret("DEV-ONLY-MEDI-BOT-KEY-1234567890")).toBe(false);
+    expect(isProductionSecret("CI-ONLY-MEDI-BOT-KEY-1234567890")).toBe(false);
+    expect(isProductionSecret("GANTI_DENGAN_KUNCI_RAHASIA_32_KARAKTER")).toBe(false);
+    process.env.CI = "true";
+    expect(isKnownCiSecret("test")).toBe(true);
+    expect(isProductionSecret("a".repeat(40))).toBe(true);
+    delete process.env.CI;
+  });
+
+  it("produksi mewajibkan RATE_LIMIT_MODE=redis dan REDIS_URL", () => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    delete process.env.NEXT_PHASE;
+    process.env.NEXTAUTH_SECRET = "a".repeat(48);
+    process.env.FIELD_ENCRYPTION_KEY = "b".repeat(48);
+    process.env.APP_SIGNING_KEY = "c".repeat(48);
+    delete process.env.AUTH_SECRET;
+    process.env.NEXTAUTH_URL = "https://klinik.example";
+    process.env.SYNC_MODE = "false";
+    process.env.REQUIRE_HUMAN_APPROVAL = "true";
+    delete process.env.CI;
+    delete process.env.GITHUB_ACTIONS;
+    process.env.RATE_LIMIT_MODE = "memory";
+    delete process.env.REDIS_URL;
+    delete process.env.RATE_LIMIT_REDIS_URL;
+
+    expect(() => assertSecureEnvironment()).toThrow(/RATE_LIMIT_MODE=redis/);
+    process.env.RATE_LIMIT_MODE = "redis";
+    expect(() => assertSecureEnvironment()).toThrow(/REDIS_URL/);
+    process.env.REDIS_URL = "redis://localhost:6379";
+    expect(() => assertSecureEnvironment()).not.toThrow();
+  });
+
+  it("produksi menolak APP_SIGNING_KEY yang tidak ada", () => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    delete process.env.NEXT_PHASE;
+    process.env.NEXTAUTH_SECRET = "a".repeat(48);
+    process.env.FIELD_ENCRYPTION_KEY = "b".repeat(48);
+    delete process.env.APP_SIGNING_KEY;
+    process.env.NEXTAUTH_URL = "https://klinik.example";
+    process.env.SYNC_MODE = "false";
+    process.env.REQUIRE_HUMAN_APPROVAL = "true";
+    process.env.RATE_LIMIT_MODE = "redis";
+    process.env.REDIS_URL = "redis://localhost:6379";
+    delete process.env.CI;
+    delete process.env.GITHUB_ACTIONS;
+    expect(() => assertSecureEnvironment()).toThrow(/APP_SIGNING_KEY wajib/);
+  });
+
+  it("denylist secret CI tetap menolak nilai yang cukup panjang", () => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    delete process.env.NEXT_PHASE;
+    process.env.NEXTAUTH_SECRET = "ci-runner-token-abcdefghijklmnop";
+    process.env.FIELD_ENCRYPTION_KEY = "b".repeat(48);
+    process.env.APP_SIGNING_KEY = "c".repeat(48);
+    delete process.env.AUTH_SECRET;
+    process.env.NEXTAUTH_URL = "https://klinik.example";
+    process.env.SYNC_MODE = "false";
+    process.env.REQUIRE_HUMAN_APPROVAL = "true";
+    process.env.RATE_LIMIT_MODE = "redis";
+    process.env.REDIS_URL = "redis://localhost:6379";
+    delete process.env.GITHUB_ACTIONS;
+    process.env.CI = "true";
+
+    expect(() => assertSecureEnvironment()).toThrow(/CI environment/);
+    process.env.CI = "false";
+    expect(() => assertSecureEnvironment()).not.toThrow();
+
+    process.env.CI = "true";
+    process.env.NEXTAUTH_SECRET = "a".repeat(48);
+    process.env.APP_SIGNING_KEY = "a".repeat(48);
+    expect(() => assertSecureEnvironment()).toThrow(/APP_SIGNING_KEY/);
+  });
+
+  it("rate limit produksi fail-closed bila Redis tidak tersedia", async () => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    delete process.env.NEXT_PHASE;
+    process.env.RATE_LIMIT_MODE = "redis";
+    delete process.env.REDIS_URL;
+    delete process.env.RATE_LIMIT_REDIS_URL;
+    const result = await checkRateLimit("emergency-test", 100, 60_000);
+    expect(result.allowed).toBe(false);
+    expect(result.backend).toBe("redis");
+    expect(result.retryAfterSeconds).toBeGreaterThan(0);
+  });
+
+  it("X-Forwarded-For hanya dipercaya bila hop proxy cocok", () => {
+    const request = new Request("https://klinik.example/api/ready", {
+      headers: {
+        "x-real-ip": "203.0.113.9",
+        "x-forwarded-for": "198.51.100.7, 10.0.0.1"
+      }
+    });
+    delete process.env.TRUST_PROXY;
+    expect(getRequestIp(request)).toBe("unknown");
+    process.env.TRUST_PROXY = "10.0.0.5";
+    expect(getRequestIp(request)).toBe("198.51.100.7");
+    expect(isTrustedProxyHop("10.0.0.9", "10.0.0.5/24")).toBe(true);
+    const spoofed = new Request("https://klinik.example/api/ready", {
+      headers: { "x-forwarded-for": "198.51.100.7" }
+    });
+    expect(getRequestIp(spoofed)).toBe("unknown");
+    process.env.TRUST_PROXY = "*";
+    expect(getRequestIp(spoofed)).toBe("198.51.100.7");
+  });
+
+  it("logger meredaksi email, NIK, telepon, dan token", () => {
+    const safe = redactLogFields({
+      requestId: "req-1",
+      email: "dokter@klinik.example",
+      nik: "3501010101010001",
+      phone: "081234567890",
+      token: "gho_rahasia123",
+      nested: { authorization: "Bearer abc.def.ghi" }
+    });
+    const serialized = JSON.stringify(safe);
+    expect(serialized).toContain("req-1");
+    expect(serialized).not.toContain("dokter@klinik.example");
+    expect(serialized).not.toContain("3501010101010001");
+    expect(serialized).not.toContain("081234567890");
+    expect(serialized).not.toContain("gho_rahasia123");
+    expect(serialized).not.toContain("abc.def.ghi");
+  });
+
+  it("RBAC PHI granuler dan akses object-level PASIEN", () => {
+    expect(hasPermission("ADMIN", "patient:read_nik")).toBe(true);
+    expect(hasPermission("DOKTER", "patient:read_diagnosis")).toBe(true);
+    expect(hasPermission("PERAWAT", "patient:read_contact")).toBe(true);
+    expect(hasPermission("PERAWAT", "patient:read_nik")).toBe(false);
+    expect(hasPermission("RESEPSIONIS", "patient:read_contact")).toBe(false);
+    expect(canAccessPatient("PASIEN", "u1", "p1", "p1")).toBe(true);
+    expect(canAccessPatient("PASIEN", "u1", "p1", "p2")).toBe(false);
+    expect(canAccessPatient("DOKTER", "u1", "p1", null, "d1", "d1")).toBe(true);
+    expect(canAccessPatient("DOKTER", "u1", "p1", null, "d2", "d1")).toBe(false);
+    expect(() => assertPatientAccess("PASIEN", "u1", "p2", "p1")).toThrow();
+  });
+});
+
+describe("Kriptografi field dan signing key", () => {
+  it("enkripsi v2 dapat didekripsi dan format v1 lama tetap didukung", async () => {
+    vi.resetModules();
+    delete process.env.FIELD_ENCRYPTION_KEY;
+    process.env.SYNC_MODE = "true";
+    const crypto = await import("../lib/crypto");
+    const nik = "3501010101010001";
+    const encrypted = crypto.encryptField(nik);
+    expect(encrypted).toMatch(/^v2:[0-9a-f]{12}:[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]+$/);
+    expect(encrypted.split(":")[0]).toBe("v2");
+    expect(crypto.decryptField(encrypted)).toBe(nik);
+    expect(crypto.decryptPhi(crypto.encryptPhi(nik))).toBe(nik);
+
+    const devKey = createHash("sha256")
+      .update("MEDI-BOT-AGENCY-V3-DEV-ONLY-DO-NOT-USE-IN-PRODUCTION")
+      .digest();
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", devKey, iv);
+    const ciphertext = Buffer.concat([cipher.update(nik, "utf8"), cipher.final()]);
+    const legacy = [
+      "v1",
+      iv.toString("hex"),
+      cipher.getAuthTag().toString("hex"),
+      ciphertext.toString("hex")
+    ].join(":");
+    expect(crypto.decryptField(legacy)).toBe(nik);
+  });
+
+  it("APP_SIGNING_KEY tidak mengubah hash NIK yang sudah tersimpan", async () => {
+    vi.resetModules();
+    delete process.env.APP_SIGNING_KEY;
+    delete process.env.FIELD_ENCRYPTION_KEY;
+    process.env.SYNC_MODE = "true";
+    const before = await import("../lib/crypto");
+    const hash = before.fieldHash("3501010101010001");
+    const signature = before.signPayload("payload");
+
+    vi.resetModules();
+    process.env.APP_SIGNING_KEY = "c".repeat(64);
+    const after = await import("../lib/crypto");
+    expect(after.hasAppSigningKey()).toBe(true);
+    expect(after.fieldHash("3501010101010001")).toBe(hash);
+    expect(after.verifyPayloadSignature("payload", signature)).toBe(true);
   });
 });

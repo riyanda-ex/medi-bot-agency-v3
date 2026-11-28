@@ -25,7 +25,20 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   output: "standalone",
-  serverExternalPackages: ["@prisma/client", "bcryptjs", "bullmq", "ioredis"],
+  serverExternalPackages: [
+    "@prisma/adapter-better-sqlite3",
+    "@prisma/adapter-pg",
+    "@prisma/client",
+    "bcryptjs",
+    "bullmq",
+    // pdfkit memuat font standar dari direktori paket secara runtime; bundling
+    // membuat MODULE_NOT_FOUND di standalone. exceljs/nodemailer juga punya
+    // aset runtime, jadi ketiganya sengaja dipakai lewat require native.
+    "exceljs",
+    "ioredis",
+    "nodemailer",
+    "pdfkit"
+  ],
   async headers() {
     return [
       {

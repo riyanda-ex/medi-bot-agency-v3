@@ -11,16 +11,60 @@ const PLACEHOLDER_MARKERS = [
   "CHANGE_",
   "CHANGEME",
   "CI-ONLY",
-  "PLACEHOLDER"
+  "DEV-ONLY",
+  "PLACEHOLDER",
+  "DUMMY",
+  "SAMPLE",
+  "EXAMPLE"
 ] as const;
 // Nilai DEV-ONLY boleh dipakai di pengembangan agar data uji lama tetap bisa
 // didekripsi, tetapi harus ditolak di produksi.
-const INSECURE_MARKERS = [...PLACEHOLDER_MARKERS, "DEV-ONLY"] as const;
+const INSECURE_MARKERS = [...PLACEHOLDER_MARKERS] as const;
+
+/**
+ * Penanda lingkungan CI yang dikenal. Bila aktif, kunci yang masih berupa nilai
+ * bawaan CI/GitHub/GitLab ditolak walaupun panjangnya tampak memadai.
+ */
+export const CI_ENV_MARKERS = [
+  "CI",
+  "GITHUB_ACTIONS",
+  "GITLAB_CI",
+  "CIRCLECI",
+  "TRAVIS",
+  "BUILDKITE",
+  "JENKINS_URL",
+  "BUILD_ID",
+  "VERCEL"
+] as const;
+
+const CI_SECRET_VALUES = new Set([
+  "ci",
+  "true",
+  "1",
+  "yes",
+  "github_actions",
+  "gitlab_ci",
+  "buildkite",
+  "circleci",
+  "runner",
+  "test",
+  "testing",
+  "dummy",
+  "sample",
+  "example",
+  "secret"
+]);
 
 function includesMarker(value: string | null | undefined, markers: readonly string[]): boolean {
   if (!value) return true;
   const upper = value.trim().toUpperCase();
   return markers.some((marker) => upper.includes(marker));
+}
+
+function isTruthyFlag(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized !== "false" && normalized !== "0" && normalized !== "";
 }
 
 /** Placeholder template yang jelas tidak boleh dipakai. */
@@ -33,12 +77,33 @@ export function isInsecureSecret(value: string | null | undefined): boolean {
   return includesMarker(value, INSECURE_MARKERS);
 }
 
+/** Lingkungan CI dikenal dari penanda standar (bukan dari isi secret). */
+export function isKnownCiEnvironment(): boolean {
+  return CI_ENV_MARKERS.some((marker) => isTruthyFlag(process.env[marker]));
+}
+
+/** Nilai kunci yang jelas hasil provision CI/default, bukan kunci acak. */
+export function isKnownCiSecret(value: string | null | undefined): boolean {
+  if (!value || !isKnownCiEnvironment()) return false;
+  const normalized = value.trim().toLowerCase();
+  if (CI_SECRET_VALUES.has(normalized)) return true;
+  return /(^|[-_])ci([-_]|$)/.test(normalized) && Buffer.byteLength(value, "utf8") < 64;
+}
+
 export function isStrongSecret(value: string | null | undefined, minimumBytes = 32): boolean {
-  return !isPlaceholderSecret(value) && Buffer.byteLength(value ?? "", "utf8") >= minimumBytes;
+  return (
+    !isPlaceholderSecret(value) &&
+    !isKnownCiSecret(value) &&
+    Buffer.byteLength(value ?? "", "utf8") >= minimumBytes
+  );
 }
 
 export function isProductionSecret(value: string | null | undefined, minimumBytes = 32): boolean {
-  return !isInsecureSecret(value) && Buffer.byteLength(value ?? "", "utf8") >= minimumBytes;
+  return (
+    !isInsecureSecret(value) &&
+    !isKnownCiSecret(value) &&
+    Buffer.byteLength(value ?? "", "utf8") >= minimumBytes
+  );
 }
 
 /** Produksi nyata: NODE_ENV=production dan bukan fase build Next.js. */
@@ -58,6 +123,7 @@ export interface EnvironmentCheck {
   outboundAllowed: boolean;
   approvalRequired: boolean;
   queueMode: "sync" | "redis";
+  rateLimitMode: "redis" | "memory";
 }
 
 /**
@@ -70,11 +136,31 @@ export function assertSecureEnvironment(): EnvironmentCheck {
   const errors: string[] = [];
 
   if (production) {
-    if (!isProductionSecret(process.env.NEXTAUTH_SECRET)) {
-      errors.push("NEXTAUTH_SECRET harus acak, bukan nilai DEV/CI, dan minimal 32 byte");
+    const authSecret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
+    if (!isProductionSecret(authSecret)) {
+      errors.push(
+        "NEXTAUTH_SECRET/AUTH_SECRET harus acak, bukan nilai DEV/CI, dan minimal 32 byte"
+      );
     }
     if (!isProductionSecret(process.env.FIELD_ENCRYPTION_KEY)) {
       errors.push("FIELD_ENCRYPTION_KEY harus acak dan minimal 32 byte");
+    }
+    const appSigningKey = process.env.APP_SIGNING_KEY;
+    const fieldKey = process.env.FIELD_ENCRYPTION_KEY;
+    const sameSecret =
+      appSigningKey?.trim() === fieldKey?.trim() || appSigningKey?.trim() === authSecret?.trim();
+    if (!appSigningKey || !isProductionSecret(appSigningKey) || sameSecret) {
+      errors.push(
+        "APP_SIGNING_KEY wajib di produksi: acak, berbeda dari auth/field key, dan minimal 32 byte"
+      );
+    }
+    if (isKnownCiEnvironment()) {
+      const ciSecrets = [authSecret, fieldKey, appSigningKey];
+      if (ciSecrets.some((value) => isKnownCiSecret(value))) {
+        errors.push(
+          "CI environment terdeteksi: secret tidak boleh memakai nilai bawaan CI/GitHub/GitLab"
+        );
+      }
     }
     if (process.env.SYNC_MODE === "true") {
       errors.push("SYNC_MODE=true tidak boleh dipakai di produksi");
@@ -87,20 +173,14 @@ export function assertSecureEnvironment(): EnvironmentCheck {
     if (!nextAuthUrl.startsWith("https://") && !isLocalhostHttp) {
       errors.push("NEXTAUTH_URL produksi wajib https:// (http://localhost hanya untuk CI/lokal)");
     }
-    // Rate limit terpusat wajib di produksi kecuali eksplisit diizinkan untuk single-instance.
-    if (
-      process.env.RATE_LIMIT_MODE === "memory" &&
-      process.env.ALLOW_INSECURE_MEMORY_RATE_LIMIT !== "true"
-    ) {
-      errors.push(
-        "RATE_LIMIT_MODE=memory tidak diizinkan di produksi; gunakan redis atau set ALLOW_INSECURE_MEMORY_RATE_LIMIT=true untuk single-instance yang dipahami risikonya"
-      );
+    // Produksi wajib memakai Redis terpusat. Memory fallback (walaupun dengan
+    // ALLOW_INSECURE_MEMORY_RATE_LIMIT) tidak lagi diterima: tidak aman untuk
+    // multi-instance dan memudahkan bypass rate limit.
+    if (process.env.RATE_LIMIT_MODE !== "redis") {
+      errors.push("RATE_LIMIT_MODE=redis wajib dipakai di produksi");
     }
-    if (
-      process.env.RATE_LIMIT_MODE === "redis" &&
-      !(process.env.RATE_LIMIT_REDIS_URL || process.env.REDIS_URL)
-    ) {
-      errors.push("RATE_LIMIT_MODE=redis butuh RATE_LIMIT_REDIS_URL atau REDIS_URL");
+    if (!process.env.REDIS_URL) {
+      errors.push("REDIS_URL wajib diisi di produksi untuk rate limit terpusat");
     }
   }
 
@@ -112,6 +192,7 @@ export function assertSecureEnvironment(): EnvironmentCheck {
     production,
     outboundAllowed: process.env.ALLOW_REAL_OUTBOUND === "true",
     approvalRequired: requireHumanApproval(),
-    queueMode: process.env.QUEUE_MODE === "redis" ? "redis" : "sync"
+    queueMode: process.env.QUEUE_MODE === "redis" ? "redis" : "sync",
+    rateLimitMode: process.env.RATE_LIMIT_MODE === "redis" ? "redis" : "memory"
   };
 }

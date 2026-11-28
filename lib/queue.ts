@@ -10,9 +10,14 @@ import Redis from "ioredis";
 import { z } from "zod";
 import { signPayload, verifyPayloadSignature } from "@/lib/crypto";
 import { assertSecureEnvironment, isProductionRuntime } from "@/lib/env";
+import { logger } from "@/lib/logger";
 
 export const QUEUE_NAME = "tasks";
+export const DEAD_LETTER_QUEUE_NAME = "tasks-dlq";
 export const DEFAULT_QUEUE_PREFIX = "medi-bot";
+export const DEFAULT_MAX_JOB_ATTEMPTS = 3;
+export const DEFAULT_JOB_BACKOFF_MS = 1000;
+export const DEFAULT_DRAIN_TIMEOUT_MS = 30_000;
 
 export interface OrchestratorJobPayload {
   runId?: string;
@@ -28,6 +33,8 @@ export interface UrgentFollowupJobPayload {
   approvedBy?: string;
   simulate?: boolean;
   stageOffset?: number;
+  /** Kunci hash pasien+level+window; stabil walaupun triageLog.id berubah. */
+  dedupeKey?: string;
 }
 
 export interface QueueJobPayloads {
@@ -52,7 +59,8 @@ export const urgentFollowupJobSchema = z.object({
   approvalId: z.string().min(1).optional(),
   approvedBy: z.string().min(1).optional(),
   simulate: z.boolean().optional(),
-  stageOffset: z.number().int().nonnegative().optional()
+  stageOffset: z.number().int().nonnegative().optional(),
+  dedupeKey: z.string().min(1).max(64).optional()
 });
 
 interface SignedJob<T> {
@@ -71,11 +79,54 @@ export interface EnqueueResult {
   detail: string;
 }
 
+export type SchedulerCandidate = "web" | "worker";
+export type SchedulerOwner = "auto" | "web" | "worker" | "none";
+
 let connection: Redis | null = null;
 let queue: Queue | null = null;
+let deadLetterQueue: Queue | null = null;
 
 export function isQueueEnabled(): boolean {
   return process.env.QUEUE_MODE === "redis" && Boolean(process.env.REDIS_URL);
+}
+
+/**
+ * Satu pemilik cron saja. `auto`: proses web saat mode memory/sync, worker saat
+ * BullMQ/Redis aktif. `web`/`worker`: override eksplisit. `none`/nilai invalid:
+ * fail-closed (tidak ada cron yang berjalan).
+ */
+export function schedulerOwner(): SchedulerOwner {
+  const raw = (process.env.SCHEDULER_OWNER ?? "auto").trim().toLowerCase();
+  if (raw === "auto" || raw === "web" || raw === "worker" || raw === "none") return raw;
+  logger.warn("scheduler.owner_invalid", { value: raw.slice(0, 32) });
+  return "none";
+}
+
+export function shouldOwnScheduler(candidate: SchedulerCandidate): boolean {
+  if (process.env.ENABLE_SCHEDULER !== "true") return false;
+  const owner = schedulerOwner();
+  if (owner === "none") return false;
+  if (owner !== "auto") return owner === candidate;
+  return candidate === (isQueueEnabled() ? "worker" : "web");
+}
+
+/** Counter metrik ringan (in-memory) untuk observability tanpa dependency baru. */
+const metricCounters = new Map<string, number>();
+
+export function recordQueueMetric(metric: string, fields: Record<string, unknown> = {}): void {
+  const key = metric.startsWith("queue.") ? metric : `queue.${metric}`;
+  const total = (metricCounters.get(key) ?? 0) + 1;
+  metricCounters.set(key, total);
+  logger.info("metric.increment", { metric: key, total, ...fields });
+}
+
+export function getQueueMetrics(): Readonly<Record<string, number>> {
+  return Object.fromEntries(metricCounters);
+}
+
+/** Reset counter metrik (dipakai tes). */
+export function resetQueueMetricsForTests(): void {
+  metricCounters.clear();
 }
 
 /** Redis produksi wajib berpassword dan/atau TLS; tidak boleh terbuka publik. */
@@ -171,14 +222,186 @@ function getQueue(): Queue {
   return queue;
 }
 
-export function buildJobOptions(options: EnqueueOptions = {}): JobsOptions {
+function boundedInteger(
+  raw: string | undefined,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+/** Retry selalu dibatasi; backoff eksponensial oleh BullMQ dengan delay dasar. */
+export function jobRetryPolicy(): { attempts: number; backoffMs: number } {
   return {
-    attempts: 3,
-    backoff: { type: "exponential", delay: 1000 },
+    attempts: boundedInteger(process.env.QUEUE_MAX_ATTEMPTS, DEFAULT_MAX_JOB_ATTEMPTS, 1, 10),
+    backoffMs: boundedInteger(process.env.QUEUE_BACKOFF_DELAY_MS, DEFAULT_JOB_BACKOFF_MS, 1, 60_000)
+  };
+}
+
+export function buildJobOptions(options: EnqueueOptions = {}): JobsOptions {
+  const { attempts, backoffMs } = jobRetryPolicy();
+  return {
+    attempts,
+    backoff: { type: "exponential", delay: backoffMs },
     delay: Math.max(0, options.delayMs ?? 0),
     removeOnComplete: 1000,
     removeOnFail: 5000,
     ...(options.jobId ? { jobId: options.jobId } : {})
+  };
+}
+
+/** Job yang sudah mencapai batas retry dipindah ke DLQ, bukan dihapus diam-diam. */
+export function isDeadLetterJobDue(job: {
+  attemptsMade: number;
+  opts?: { attempts?: number };
+}): boolean {
+  const configured = job.opts?.attempts ?? jobRetryPolicy().attempts;
+  return job.attemptsMade >= Math.max(1, configured);
+}
+
+function getDeadLetterQueue(): Queue {
+  if (deadLetterQueue) return deadLetterQueue;
+  deadLetterQueue = new Queue(DEAD_LETTER_QUEUE_NAME, {
+    connection: getConnection(),
+    prefix: queuePrefix()
+  });
+  return deadLetterQueue;
+}
+
+/** Salin job yang gagal permanen ke antrean DLQ untuk inspeksi/replay manual. */
+export async function enqueueDeadLetterJob(
+  job: { id?: string; name: string; data: unknown; attemptsMade?: number },
+  error: Error
+): Promise<EnqueueResult> {
+  const added = await getDeadLetterQueue().add(
+    "dead-letter",
+    {
+      sourceQueue: QUEUE_NAME,
+      jobId: job.id ?? null,
+      jobName: job.name,
+      data: job.data,
+      attemptsMade: job.attemptsMade ?? 0,
+      error: error.message.slice(0, 2000),
+      failedAt: new Date().toISOString()
+    },
+    { attempts: 1, removeOnComplete: false, removeOnFail: false }
+  );
+  recordQueueMetric("job.dead_lettered", { jobName: job.name });
+  return {
+    mode: "redis",
+    jobId: added.id,
+    detail: `Job ${job.id ?? "(tanpa id)"} dipindah ke DLQ ${queuePrefix()}:${DEAD_LETTER_QUEUE_NAME}.`
+  };
+}
+
+export interface DeadLetterEntry {
+  sourceQueue: string;
+  jobId: string | null;
+  jobName: string;
+  data: unknown;
+  attemptsMade: number;
+  error: string;
+  failedAt: string;
+  replayedAt?: string;
+  replayJobId?: string;
+}
+
+/** Daftar job DLQ untuk operator; tidak pernah memuat payload ke UI publik. */
+export async function listDeadLetterJobs(limit = 20): Promise<
+  Array<{
+    id: string;
+    sourceJobId: string | null;
+    jobName: string;
+    failedAt: string;
+    error: string;
+    replayedAt: string | null;
+    replayJobId: string | null;
+  }>
+> {
+  if (!isQueueEnabled()) return [];
+  const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+  const jobs = await getDeadLetterQueue().getJobs(
+    ["completed", "failed", "waiting"],
+    0,
+    safeLimit - 1
+  );
+  return jobs.map((job) => {
+    const row = job.data as DeadLetterEntry;
+    return {
+      id: job.id ?? "",
+      sourceJobId: row.jobId ?? null,
+      jobName: row.jobName ?? "?",
+      failedAt: row.failedAt ?? "",
+      error: (row.error ?? "").slice(0, 300),
+      replayedAt: row.replayedAt ?? null,
+      replayJobId: row.replayJobId ?? null
+    };
+  });
+}
+
+/** ID deterministik mencegah dua replay konkuren mengirim dua kali. */
+export function deadLetterReplayJobId(jobId: string): string {
+  return `dlq-replay:${jobId}`;
+}
+
+/** Validasi murni sebelum replay; dipakai CLI dan tes tanpa koneksi Redis. */
+export function validateDeadLetterEntry(row: DeadLetterEntry): void {
+  if (row.replayedAt) {
+    throw new Error(`Job DLQ sudah direplay pada ${row.replayedAt}.`);
+  }
+  if (row.sourceQueue !== QUEUE_NAME) {
+    throw new Error("Job DLQ berasal dari antrean lain; replay ditolak.");
+  }
+  if (row.jobName === "orchestrator.run") {
+    orchestratorJobSchema.parse(verifyJobPayload<OrchestratorJobPayload>(row.data));
+    return;
+  }
+  if (row.jobName === "urgent.followup") {
+    urgentFollowupJobSchema.parse(verifyJobPayload<UrgentFollowupJobPayload>(row.data));
+    return;
+  }
+  throw new Error(`Nama job ${row.jobName} tidak dikenal; replay ditolak.`);
+}
+
+/**
+ * Replay satu job DLQ. Payload aslinya tetap diverifikasi HMAC + Zod sebelum
+ * masuk antrean utama. ID replay deterministik membuat dua eksekusi konkuren
+ * tidak bisa menghasilkan dua job; replayedAt ditulis setelah enqueue sukses.
+ */
+export async function replayDeadLetterJob(
+  jobId: string
+): Promise<EnqueueResult & { sourceJobId: string | null }> {
+  if (!isQueueEnabled()) throw new Error("Replay DLQ hanya tersedia saat QUEUE_MODE=redis.");
+  assertSecureEnvironment();
+  assertRedisSecurity();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(jobId)) throw new Error("ID job DLQ tidak valid.");
+
+  const entry = await getDeadLetterQueue().getJob(jobId);
+  if (!entry) throw new Error(`Job DLQ ${jobId} tidak ditemukan.`);
+  const row = entry.data as DeadLetterEntry;
+  validateDeadLetterEntry(row);
+
+  const replayJobId = deadLetterReplayJobId(jobId);
+  const added = await getQueue().add(
+    row.jobName,
+    row.data,
+    buildJobOptions({ jobId: replayJobId })
+  );
+  await entry.updateData({
+    ...row,
+    replayedAt: new Date().toISOString(),
+    replayJobId: added.id ?? replayJobId
+  });
+  recordQueueMetric("job.replayed", { jobName: row.jobName });
+  return {
+    mode: "redis",
+    jobId: added.id ?? replayJobId,
+    sourceJobId: row.jobId ?? null,
+    detail: `DLQ ${jobId} direplay sebagai ${row.jobName} dengan jobId ${added.id ?? replayJobId}.`
   };
 }
 
@@ -232,10 +455,33 @@ export async function startQueueWorker(handlers: QueueHandlers): Promise<Worker 
   );
 
   worker.on("completed", (job) => {
-    console.log(`[QUEUE] Selesai: ${job.name} (${job.id ?? "-"})`);
+    recordQueueMetric("job.completed", { jobName: job.name });
+    logger.info("queue.job_completed", { jobName: job.name, jobId: job.id ?? "-" });
   });
+
+  // Setiap job yang gagal permanen (retry habis) masuk DLQ. Guard in-memory
+  // mencegah duplicate DLQ bila event failed terfire lebih dari sekali.
+  const deadLettered = new Set<string>();
   worker.on("failed", (job, error) => {
-    console.error(`[QUEUE] Gagal: ${job?.name ?? "?"} (${job?.id ?? "-"}) - ${error.message}`);
+    logger.error("queue.job_failed", {
+      jobName: job?.name ?? "?",
+      jobId: job?.id ?? "-",
+      attemptsMade: job?.attemptsMade ?? 0,
+      error: error.message.slice(0, 500)
+    });
+    recordQueueMetric("job.failed", { jobName: job?.name ?? "?" });
+    if (!job || !isDeadLetterJobDue(job)) return;
+    const key = job.id ?? `${job.name}:${job.attemptsMade}:${Date.now()}`;
+    if (deadLettered.has(key)) return;
+    if (deadLettered.size > 1000) deadLettered.clear();
+    deadLettered.add(key);
+    void enqueueDeadLetterJob(job, error).catch((dlqError: Error) => {
+      logger.error("queue.dead_letter_failed", {
+        jobId: job.id ?? "-",
+        error: dlqError.message.slice(0, 500)
+      });
+      recordQueueMetric("job.dead_letter_failed", { jobName: job.name });
+    });
   });
 
   return worker;
@@ -243,8 +489,41 @@ export async function startQueueWorker(handlers: QueueHandlers): Promise<Worker 
 
 export async function closeQueueConnections(worker?: Worker | null): Promise<void> {
   if (worker) {
-    // Beri waktu pekerjaan berhenti rapi sebelum paksa tutup.
-    await Promise.race([worker.close(), new Promise<void>((resolve) => setTimeout(resolve, 5000))]);
+    const drainTimeoutMs = boundedInteger(
+      process.env.QUEUE_DRAIN_TIMEOUT_MS,
+      DEFAULT_DRAIN_TIMEOUT_MS,
+      1000,
+      300_000
+    );
+    // close() tanpa force menunggu job aktif selesai. Watchdog hanya memberi
+    // batas waktu; tidak ada process.exit() di sini maupun di handler job.
+    let watchdog: NodeJS.Timeout | undefined;
+    const outcome = await Promise.race([
+      worker
+        .close(false)
+        .then(() => "drained" as const)
+        .catch((error: Error) => {
+          logger.error("queue.worker_close_failed", { error: error.message.slice(0, 500) });
+          return "drained" as const;
+        }),
+      new Promise<"timeout">((resolve) => {
+        watchdog = setTimeout(() => resolve("timeout"), drainTimeoutMs);
+      })
+    ]);
+    if (watchdog) clearTimeout(watchdog);
+    if (outcome === "timeout") {
+      logger.warn("queue.drain_timeout", { timeoutMs: drainTimeoutMs });
+      recordQueueMetric("worker.drain_timeout");
+      await worker.close(true).catch((error: Error) => {
+        logger.error("queue.force_close_failed", { error: error.message.slice(0, 500) });
+      });
+    } else {
+      recordQueueMetric("worker.drained");
+    }
+  }
+  if (deadLetterQueue) {
+    await deadLetterQueue.close();
+    deadLetterQueue = null;
   }
   if (queue) {
     await queue.close();

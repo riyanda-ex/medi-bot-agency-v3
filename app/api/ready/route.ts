@@ -3,6 +3,7 @@ import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
 import { logApiRequest } from "@/lib/apiLog";
 import { prisma } from "@/lib/prisma";
 import { isQueueEnabled } from "@/lib/queue";
+import { getClientIp } from "@/lib/requestGuard";
 import Redis from "ioredis";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     path: "/api/ready",
     statusCode: status,
     durationMs: Date.now() - startedAt,
-    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    ip: getClientIp(request),
     error: ready ? null : "not_ready"
   });
   return jsonWithRequestId(

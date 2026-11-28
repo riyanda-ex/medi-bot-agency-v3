@@ -1,5 +1,5 @@
-import { type NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials";
+import type { NextAuthConfig } from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -7,10 +7,16 @@ import { normalizeRole, TIDAK_AKTIF } from "@/lib/rbac";
 import { assertSecureEnvironment } from "@/lib/env";
 import { checkRateLimit, pruneRateLimits } from "@/lib/rateLimit";
 import { getRequestIp, recordAuthFailure } from "@/lib/audit";
+import { decryptField } from "@/lib/crypto";
+import { verifyTotp } from "@/lib/mfa";
+import { consumeRecoveryCodeForUser } from "@/lib/mfaStore";
+import { logger } from "@/lib/logger";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1).max(200)
+  password: z.string().min(1).max(200),
+  // Kode TOTP/kode pemulihan. Kosong hanya diperbolehkan bila MFA tidak aktif.
+  mfaCode: z.string().trim().max(64).optional()
 });
 
 const LOGIN_LIMIT = 8;
@@ -18,14 +24,16 @@ const LOGIN_WINDOW_MS = 5 * 60_000;
 // Hash dummy dipakai saat email tidak ada agar waktu respons tidak membedakan
 // antara "email tidak terdaftar" dan "kata sandi salah".
 const DUMMY_HASH = bcrypt.hashSync("timing-equalizer-not-a-real-password", 10);
+const secureCookies = (process.env.AUTH_URL ?? process.env.NEXTAUTH_URL)?.startsWith("https://");
 
-export const authOptions: NextAuthOptions = {
+export const authConfig: NextAuthConfig = {
   providers: [
-    CredentialsProvider({
+    Credentials({
       name: "Akun Klinik",
       credentials: {
         email: { label: "Email", type: "email" },
-        password: { label: "Kata sandi", type: "password" }
+        password: { label: "Kata sandi", type: "password" },
+        mfaCode: { label: "Kode MFA / kode pemulihan", type: "text" }
       },
       async authorize(credentials, request) {
         assertSecureEnvironment();
@@ -33,15 +41,12 @@ export const authOptions: NextAuthOptions = {
         if (!parsed.success) return null;
 
         const email = parsed.data.email.trim().toLowerCase();
-        const headers = (request?.headers ?? {}) as Record<string, string | string[] | undefined>;
-        const ip = getRequestIp(headers);
+        const ip = getRequestIp(request);
         const rateKey = `login:${ip}:${email}`;
         pruneRateLimits();
         const rate = await checkRateLimit(rateKey, LOGIN_LIMIT, LOGIN_WINDOW_MS);
         if (!rate.allowed) {
-          console.warn(
-            `[AUTH] Login dibatasi untuk ${email} dari ${ip}, coba lagi ${rate.retryAfterSeconds}s.`
-          );
+          logger.warn("AUTH_LOGIN_RATE_LIMITED", { ip, retryAfterSeconds: rate.retryAfterSeconds });
           await recordAuthFailure({ email, ip, reason: "RATE_LIMITED" });
           return null;
         }
@@ -50,14 +55,39 @@ export const authOptions: NextAuthOptions = {
         const valid = await bcrypt.compare(parsed.data.password, user?.passwordHash ?? DUMMY_HASH);
 
         if (!user || !valid) {
-          console.warn(`[AUTH] Login gagal untuk ${email} dari ${ip}.`);
+          logger.warn("AUTH_LOGIN_FAILED", { ip, reason: "INVALID_CREDENTIALS" });
           await recordAuthFailure({ email, ip, reason: "INVALID_CREDENTIALS" });
           return null;
         }
         if (user.status !== "AKTIF") {
-          console.warn(`[AUTH] Akun nonaktif mencoba login: ${email}.`);
+          logger.warn("AUTH_LOGIN_INACTIVE", { ip });
           await recordAuthFailure({ email, ip, reason: "ACCOUNT_INACTIVE" });
           return null;
+        }
+
+        if (user.mfaEnabled) {
+          const code = parsed.data.mfaCode;
+          if (!code) {
+            logger.warn("AUTH_MFA_REQUIRED", { ip });
+            await recordAuthFailure({ email, ip, reason: "MFA_REQUIRED" });
+            return null;
+          }
+          let mfaOk = false;
+          if (user.mfaSecret) {
+            try {
+              mfaOk = verifyTotp(decryptField(user.mfaSecret), code);
+            } catch {
+              mfaOk = false;
+            }
+          }
+          if (!mfaOk) {
+            mfaOk = await consumeRecoveryCodeForUser(user.id, user.mfaRecoveryHash ?? null, code);
+          }
+          if (!mfaOk) {
+            logger.warn("AUTH_MFA_FAILED", { ip });
+            await recordAuthFailure({ email, ip, reason: "MFA_INVALID" });
+            return null;
+          }
         }
 
         await prisma.user.update({
@@ -79,16 +109,15 @@ export const authOptions: NextAuthOptions = {
   ],
   session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
   pages: { signIn: "/login" },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+  trustHost: true,
   cookies: {
     sessionToken: {
-      name: process.env.NEXTAUTH_URL?.startsWith("https://")
-        ? "__Secure-next-auth.session-token"
-        : "next-auth.session-token",
+      name: secureCookies ? "__Secure-authjs.session-token" : "authjs.session-token",
       options: {
         httpOnly: true,
         sameSite: "strict",
-        secure: process.env.NEXTAUTH_URL?.startsWith("https://") ?? false,
+        secure: secureCookies ?? false,
         path: "/"
       }
     }
@@ -99,11 +128,11 @@ export const authOptions: NextAuthOptions = {
         token.sub = user.id;
         token.patientId = user.patientId ?? undefined;
         token.doctorId = user.doctorId ?? undefined;
-        token.tokenVersion = (user as { tokenVersion?: number }).tokenVersion ?? 0;
+        token.tokenVersion = user.tokenVersion ?? 0;
       }
 
       // Revalidasi setiap permintaan: peran berubah atau tokenVersion naik
-      // langsung memblokir JWT lama, termasuk di middleware/proxy.
+      // langsung memblokir JWT lama.
       if (token.sub) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.sub },
@@ -142,3 +171,6 @@ export const authOptions: NextAuthOptions = {
     }
   }
 };
+
+// Kompatibilitas dengan tooling lama yang masih mengimpor authOptions.
+export const authOptions = authConfig;

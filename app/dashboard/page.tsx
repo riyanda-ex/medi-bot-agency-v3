@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/auth";
 import { canAccessAudit, canApproveOutbound, canViewDiagnosis, canViewTriage } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { ManualRunButton } from "@/components/manual-run-button";
@@ -15,8 +14,10 @@ async function distinctPatientCount(level: string): Promise<number> {
   return rows.length;
 }
 
+const LEVEL_PRIORITY: Record<string, number> = { MERAH: 0, KUNING: 1, HIJAU: 2 };
+
 export default async function DashboardPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const role = session?.user.role ?? "TIDAK_AKTIF";
 
   const [patients, redCount, yellowCount, greenCount, urgentCalls, recent, latestDiagnosis] =
@@ -28,7 +29,7 @@ export default async function DashboardPage() {
       prisma.urgentCall.count({ where: { simulated: true } }),
       prisma.triageLog.findMany({
         orderBy: { createdAt: "desc" },
-        take: 6,
+        take: 20,
         include: { patient: { select: { name: true, nikMasked: true } } }
       }),
       canViewDiagnosis(role)
@@ -45,8 +46,12 @@ export default async function DashboardPage() {
     ]);
 
   const pendingUrgent = canApproveOutbound(role)
-    ? recent
-        .filter((item) => item.level === "MERAH")
+    ? [...recent]
+        .sort((a, b) => {
+          const priority = (LEVEL_PRIORITY[a.level] ?? 9) - (LEVEL_PRIORITY[b.level] ?? 9);
+          return priority !== 0 ? priority : b.createdAt.getTime() - a.createdAt.getTime();
+        })
+        .slice(0, 8)
         .map((item) => ({
           id: item.id,
           patientName: item.patient.name,
@@ -70,6 +75,9 @@ export default async function DashboardPage() {
           </Link>
           <Link className="rounded border px-3 py-2 hover:bg-muted" href="/reports">
             Laporan
+          </Link>
+          <Link className="rounded border px-3 py-2 hover:bg-muted" href="/security">
+            Keamanan
           </Link>
           {canAccessAudit(role) ? (
             <Link className="rounded border px-3 py-2 hover:bg-muted" href="/audit">

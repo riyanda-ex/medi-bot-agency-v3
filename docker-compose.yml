@@ -1,7 +1,18 @@
-# Layanan produksi: PostgreSQL + Redis.
-# Jalankan: docker compose up -d
+# Layanan produksi: PostgreSQL + Redis + aplikasi + worker.
+# Jalankan: docker compose --profile app up -d
 # Untuk mode testing Windows tanpa Docker, file ini TIDAK dibutuhkan.
 # Port hanya di-bind ke loopback; jangan expose ke jaringan publik.
+# .env berisi nilai dari secret manager (bukan kunci asli di repository).
+# Docker secret dapat dipetakan ke variabel *_FILE; lihat docs/EXTERNAL-INFRA.md.
+#
+# secrets:
+#   postgres_password:
+#     file: ./secrets/postgres_password
+#   redis_password:
+#     file: ./secrets/redis_password
+
+x-default-database: &default-database "postgresql://medibot:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di .env}@postgres:5432/medibot?schema=public"
+x-default-redis: &default-redis "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD wajib diisi di .env}@redis:6379"
 
 services:
   postgres:
@@ -11,6 +22,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-medibot}
       POSTGRES_USER: ${POSTGRES_USER:-medibot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di .env}
+      # POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -20,6 +32,43 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  # Opsional: docker compose --profile ha up -d (setelah bootstrap replikasi).
+  # Service ini sengaja fail-closed bila standby.signal belum dibuat.
+  postgres-ha:
+    image: postgres:16-alpine
+    profiles: ["ha"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-medibot}
+      POSTGRES_USER: ${POSTGRES_USER:-medibot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di .env}
+      # POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - pgreplica:/var/lib/postgresql/data
+    command:
+      - sh
+      - -c
+      - |
+        if [ ! -f /var/lib/postgresql/data/standby.signal ]; then
+          echo "[HA] standby.signal belum ada. Bootstrap replica dengan pg_basebackup atau provision managed standby." >&2
+          exit 1
+        fi
+        exec postgres -c hot_standby=on
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-medibot} -d ${POSTGRES_DB:-medibot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
 
   redis:
     image: redis:7-alpine
@@ -43,6 +92,69 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  # Opsional: replica Redis read-only. Profil "ha" tidak aktif secara default.
+  redis-ha:
+    image: redis:7-alpine
+    profiles: ["ha"]
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD wajib diisi di .env}
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "${REDIS_PASSWORD:?REDIS_PASSWORD wajib diisi di .env}",
+        "--masterauth",
+        "${REDIS_PASSWORD:?REDIS_PASSWORD wajib diisi di .env}",
+        "--replicaof",
+        "redis",
+        "6379"
+      ]
+    volumes:
+      - redisha:/data
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "$$REDIS_PASSWORD" info replication | grep -q "role:slave"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+  # Satu kali: generate schema Postgres lalu deploy migrasi versi Postgres.
+  # build target = builder karena CLI Prisma adalah devDependency.
+  migrate:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      SYNC_MODE: "false"
+      ALLOW_DESTRUCTIVE_SEED: "0"
+      DATABASE_URL: *default-database
+    command:
+      - sh
+      - -c
+      - |
+        node scripts/sync-postgres-schema.mjs &&
+        npx prisma migrate deploy --config prisma/postgres.config.ts
 
   app:
     build:
@@ -51,6 +163,8 @@ services:
     profiles: ["app"]
     restart: unless-stopped
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -59,14 +173,28 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      SYNC_MODE: "false"
+      ALLOW_DESTRUCTIVE_SEED: "0"
       QUEUE_MODE: redis
+      RATE_LIMIT_MODE: redis
+      DATABASE_URL: *default-database
+      REDIS_URL: *default-redis
     ports:
       - "127.0.0.1:3000:3000"
+    volumes:
+      - reports:/app/reports
+      - sqlitedata:/app/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/ready || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10
+      start_period: 30s
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   worker:
     build:
@@ -75,17 +203,36 @@ services:
     profiles: ["app"]
     restart: unless-stopped
     depends_on:
-      redis:
+      migrate:
+        condition: service_completed_successfully
+      app:
         condition: service_healthy
-      postgres:
+      redis:
         condition: service_healthy
     env_file:
       - .env
     environment:
       NODE_ENV: production
+      SYNC_MODE: "false"
+      ALLOW_DESTRUCTIVE_SEED: "0"
       QUEUE_MODE: redis
+      RATE_LIMIT_MODE: redis
+      DATABASE_URL: *default-database
+      REDIS_URL: *default-redis
     command: ["node", "--import", "tsx", "scripts/queue-worker.ts"]
+    volumes:
+      - reports:/app/reports
+      - sqlitedata:/app/data
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
 volumes:
   pgdata:
+  pgreplica:
   redisdata:
+  redisha:
+  reports:
+  sqlitedata:

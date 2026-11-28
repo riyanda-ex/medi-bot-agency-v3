@@ -5,7 +5,7 @@
 > Fondasi operasional klinik multi-agent untuk klinik Indonesia — aman secara default, mock secara default, dapat diaudit secara desain.
 
 [![CI](https://github.com/riyanda-ex/medi-bot-agency-v3/actions/workflows/ci.yml/badge.svg)](https://github.com/riyanda-ex/medi-bot-agency-v3/actions/workflows/ci.yml)
-![Node](https://img.shields.io/badge/node-22%2B-339933?logo=node.js&logoColor=white)
+![Node](https://img.shields.io/badge/node-24%2B-339933?logo=node.js&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-16.4.6-black?logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
@@ -43,7 +43,9 @@ MediBot Clinical Operations Platform adalah sistem Next.js App Router yang mengo
 - **Alur triase urgent**: evaluasi MERAH/KUNING/HIJAU berbasis aturan dengan audit log dan simulasi tindak lanjut.
 - **Gerbang approval manusia**: aksi outbound nyata memerlukan approval DOKTER/ADMIN (HMAC-signed, TTL 30 menit).
 - **Auditabilitas**: catatan audit bertanda tangan untuk akses API, penolakan, approval, dan aksi penting.
-- **Pelaporan**: laporan harian PDF/Excel dengan pembatasan download di folder `reports/`.
+- **Pelaporan**: laporan harian PDF/Excel dengan unduhan streaming dan pembatasan di folder `reports/`.
+- **Privasi & akun**: MFA TOTP, tautan reset sekali pakai, retensi klinis 25 tahun, tiket hak subjek data
+  dengan SLA 72 jam, legal hold, dan pencabutan sesi oleh admin.
 - **Default aman**: provider WhatsApp/telepon/email mock, tidak ada kunci asli di repo, outbound dimatikan secara default.
 
 ## Postur Keamanan
@@ -58,6 +60,12 @@ Kontrol yang sudah diimplementasikan:
 - Security headers/CSP via `next.config.mjs` dan header proxy untuk route terlindungi.
 - Job queue HMAC-signed/Zod-validated; cek keamanan Redis produksi (password/TLS host publik).
 - Guard env produksi menolak secret placeholder/DEV/CI, `SYNC_MODE=true`, dan approval manusia dimatikan.
+- Consent untuk tindak lanjut WhatsApp/telepon ke pasien diperiksa ulang saat eksekusi
+  (`agents/urgentCaller.ts`); email laporan ke staf hanya digate approval (`agents/reporter.ts`),
+  bukan consent pasien. Approval sekali pakai dan penolakan tercatat di audit.
+- Tanda tangan audit diverifikasi dengan `npm run audit:verify`; retensi rutin produksi tidak pernah
+  menghapus massal baris audit (pengecualian terdokumentasi: seed destruktif dev/test).
+- Metrik hanya tersedia dengan `METRICS_TOKEN` terpisah dan tidak memuat PHI.
 
 > Tidak ada sistem yang bisa dijamin “tidak bisa diretas”. Sebelum deployment klinis nyata, selesaikan [Checklist Produksi](docs/PRODUCTION-CHECKLIST.md), penetration test eksternal, dan review legal/kepatuhan.
 
@@ -78,7 +86,7 @@ Kontrol yang sudah diimplementasikan:
 
 ### Prasyarat
 
-- Windows PowerShell (diuji), Node.js 22+, npm 11+
+- Windows PowerShell (diuji), Node.js 24+, npm 11.20.0 (`packageManager`)
 - Docker **tidak wajib** untuk dev lokal (SQLite + `SYNC_MODE=true`)
 
 ### Instalasi & Jalankan
@@ -95,35 +103,63 @@ Buka `http://localhost:3000`.
 
 ### Akun Pengembangan Lokal
 
-> Hanya untuk pengembangan lokal. Form login tidak mengisi otomatis. Seeding produksi diblokir kecuali `ALLOW_SEED=true` dengan `SEED_PASSWORD` yang kuat.
+> Hanya untuk pengembangan lokal. Form login tidak mengisi otomatis. Seed destruktif hanya berjalan di `development`/`test` dengan `ALLOW_DESTRUCTIVE_SEED=1`; produksi selalu diblokir. Kata sandi berasal dari `SEED_ADMIN_PASSWORD` (atau nilai acak yang dicetak sekali bila tidak diisi).
 
-| Peran       | Email                        | Kata sandi    | Akses Diagnosis |
-| ----------- | ---------------------------- | ------------- | --------------- |
-| DOKTER      | `dokter@klinik.example`      | `password123` | Ya              |
-| PERAWAT     | `perawat@klinik.example`     | `password123` | Triase saja     |
-| RESEPSIONIS | `resepsionis@klinik.example` | `password123` | Tidak           |
-| ADMIN       | `admin@klinik.example`       | `password123` | Ya              |
-| PASIEN      | `pasien@klinik.example`      | `password123` | Data sendiri    |
+| Peran       | Email                        | Kata sandi                   | Akses Diagnosis |
+| ----------- | ---------------------------- | ---------------------------- | --------------- |
+| DOKTER      | `dokter@klinik.example`      | `SEED_ADMIN_PASSWORD` / acak | Ya              |
+| PERAWAT     | `perawat@klinik.example`     | `SEED_ADMIN_PASSWORD` / acak | Triase saja     |
+| RESEPSIONIS | `resepsionis@klinik.example` | `SEED_ADMIN_PASSWORD` / acak | Tidak           |
+| ADMIN       | `admin@klinik.example`       | `SEED_ADMIN_PASSWORD` / acak | Ya              |
+| PASIEN      | `pasien@klinik.example`      | `SEED_ADMIN_PASSWORD` / acak | Data sendiri    |
 
 ## Perintah yang Tersedia
 
-| Perintah                | Deskripsi                                                  |
-| ----------------------- | ---------------------------------------------------------- |
-| `npm run dev`           | Jalankan server development Next.js.                       |
-| `npm run build`         | Buat build produksi.                                       |
-| `npm run start`         | Jalankan server produksi.                                  |
-| `npm run lint`          | Jalankan ESLint.                                           |
-| `npm run format:check`  | Cek format Prettier.                                       |
-| `npm run typecheck`     | Cek TypeScript.                                            |
-| `npm test`              | Jalankan test Vitest.                                      |
-| `npm run test:coverage` | Jalankan test dengan coverage.                             |
-| `npm run db:setup`      | Generate Prisma client, push schema SQLite, seed data dev. |
-| `npm run db:studio`     | Buka Prisma Studio.                                        |
-| `npm run db:setup:pg`   | Push + seed PostgreSQL (butuh `DATABASE_URL`).             |
-| `npm run queue:worker`  | Jalankan worker BullMQ (butuh `QUEUE_MODE=redis`).         |
-| `npm run verify:agents` | Smoke-test agent dan DB.                                   |
-| `npm run e2e`           | Jalankan cek HTTP E2E terhadap server berjalan.            |
-| `npm run queue:check`   | Verifikasi queue Redis mengembalikan 202 + `jobId`.        |
+Daftar lengkap (sumber: [`package.json`](package.json)):
+
+| Perintah                       | Deskripsi                                                               |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| `npm run dev`                  | Jalankan server development Next.js.                                    |
+| `npm run build`                | Buat build produksi.                                                    |
+| `npm run prestart`             | Siapkan standalone output (hook lifecycle sebelum `start`).             |
+| `npm run start`                | Jalankan server produksi dari `.next/standalone`.                       |
+| `npm run typecheck`            | Cek TypeScript (alias TS6).                                             |
+| `npm run typecheck:7`          | Cek TypeScript native TS7.                                              |
+| `npm run test`                 | Jalankan test Vitest (`npm test` sama).                                 |
+| `npm run test:ci`              | Jalankan Vitest dengan coverage di CI.                                  |
+| `npm run test:watch`           | Jalankan Vitest mode watch.                                             |
+| `npm run verify:agents`        | Smoke-test agent dan DB.                                                |
+| `npm run queue:worker`         | Jalankan worker BullMQ (butuh `QUEUE_MODE=redis`).                      |
+| `npm run e2e`                  | Jalankan cek HTTP E2E terhadap server berjalan.                         |
+| `npm run queue:check`          | Verifikasi queue Redis mengembalikan 202 + `jobId`.                     |
+| `npm run queue:replay`         | Lihat/replay job gagal dari DLQ (`--list` atau `<jobId>`).              |
+| `npm run prisma:generate`      | Generate Prisma client dari schema SQLite.                              |
+| `npm run prisma:generate:pg`   | Sinkronkan schema PostgreSQL dan generate client-nya.                   |
+| `npm run db:push`              | Push schema SQLite (hanya dev lokal).                                   |
+| `npm run db:migrate:dev`       | Buat/terapkan migrasi SQLite development.                               |
+| `npm run db:migrate:deploy`    | Terapkan migrasi SQLite (DB baru).                                      |
+| `npm run db:migrate:deploy:pg` | Terapkan migrasi PostgreSQL via `prisma/postgres.config.ts` (produksi). |
+| `npm run db:backup:pg`         | Backup `pg_dump` dengan pemangkasan retensi.                            |
+| `npm run db:restore:pg`        | `pg_restore` dengan konfirmasi eksplisit.                               |
+| `npm run audit:verify`         | Verifikasi tanda tangan HMAC baris audit.                               |
+| `npm run retention:sweep`      | Selaraskan retensi 25 tahun dan laporkan tiket DSR.                     |
+| `npm run perf:check`           | Uji beban singkat dengan SLO p95/error rate.                            |
+| `npm run db:seed`              | Seed data dev/test (destruktif; dijaga flag env).                       |
+| `npm run db:setup`             | `prisma:generate` + `db:push` + `db:seed` (dev saja).                   |
+| `npm run db:push:pg`           | Push schema PostgreSQL (dev/test saja; jangan di produksi).             |
+| `npm run db:setup:pg`          | `prisma:generate:pg` + `db:push:pg` + `db:seed` (dev/test saja).        |
+| `npm run db:studio`            | Buka Prisma Studio.                                                     |
+| `npm run postinstall`          | Generate Prisma client otomatis setelah install (hook lifecycle).       |
+| `npm run lint`                 | Jalankan ESLint.                                                        |
+| `npm run lint:fix`             | Jalankan ESLint dengan `--fix`.                                         |
+| `npm run format`               | Jalankan Prettier write.                                                |
+| `npm run format:check`         | Cek format Prettier.                                                    |
+| `npm run test:coverage`        | Jalankan test dengan coverage.                                          |
+| `npm run openapi:check`        | Validasi `openapi.yaml` via `scripts/check-openapi.mjs`.                |
+| `npm run verify:all`           | lint, format, dua typecheck, test, audit, build, OpenAPI.               |
+
+Produksi memakai migrasi (`npm run db:migrate:deploy:pg` atau service `migrate` di compose).
+**Jangan** pakai `prisma db push` maupun `npm run db:setup:pg` pada data produksi.
 
 ## Struktur Proyek
 
@@ -157,6 +193,8 @@ Salin `.env.example` ke `.env`. Variabel penting:
 | `TRUST_PROXY`            | kosong       | IP proxy tepercaya untuk forwarded client IP.       |
 | `SYNC_MODE`              | `true` (dev) | Harus `false` di produksi.                          |
 | `RATE_LIMIT_MODE`        | `auto`       | `auto`, `memory`, `redis` untuk rate limiter.       |
+| `APP_SIGNING_KEY`        | kosong       | Wajib di produksi; kunci HMAC terpisah.             |
+| `METRICS_TOKEN`          | kosong       | Bearer token `/api/metrics`; kosong = nonaktif.     |
 
 Lihat `.env.example` untuk daftar lengkap.
 
@@ -165,17 +203,18 @@ Lihat `.env.example` untuk daftar lengkap.
 1. Ikuti [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md).
 2. Sediakan PostgreSQL + Redis (jaringan privat, auth/TLS sesuai kebutuhan).
 3. Set secret kuat dan env guard produksi.
-4. Jalankan:
+4. Jalankan seluruh stack; service `migrate` akan menyinkronkan schema dan menerapkan migrasi
+   sebelum app siap, lalu worker berjalan sebagai proses terpisah:
 
 ```powershell
-docker compose up -d
-npm run db:setup:pg
-npm run build
-npm run queue:worker
-npm run start
+docker compose --profile app up -d
 ```
 
-`QUEUE_MODE=redis` mengembalikan HTTP 202 + `jobId` untuk pekerjaan yang diantrikan; jalankan worker sebagai proses terpisah.
+Untuk deployment host-managed, terapkan migrasi lebih dulu dengan
+`npm run db:migrate:deploy:pg` (`npx prisma migrate deploy --config prisma/postgres.config.ts`),
+lalu build dan jalankan server serta worker secara terpisah. Healthcheck app memakai `/api/ready`.
+**Jangan** pakai `prisma db push` atau `npm run db:setup:pg` pada data produksi.
+`QUEUE_MODE=redis` mengembalikan HTTP 202 + `jobId` untuk pekerjaan yang diantrikan.
 
 ## Dokumentasi
 
@@ -185,6 +224,9 @@ npm run start
 - [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md) — checklist hardening deployment.
 - [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md) — model ancaman STRIDE.
 - [`docs/PRIVACY-DATA-HANDLING.md`](docs/PRIVACY-DATA-HANDLING.md) — penanganan data/privasi.
+- [`docs/DATA-LIFECYCLE.md`](docs/DATA-LIFECYCLE.md) — state machine consent/penghapusan dan backup.
+- [`docs/STAFF-GUIDE.md`](docs/STAFF-GUIDE.md) — panduan harian staf klinik tanpa teknis.
+- [`docs/SOP-KLINIK.md`](docs/SOP-KLINIK.md) — draf SOP klinik yang perlu ditandatangani.
 - [`docs/INCIDENT-RESPONSE.md`](docs/INCIDENT-RESPONSE.md) — runbook respons insiden.
 - [`TESTING.md`](TESTING.md) — protokol pengujian.
 - [`SECURITY.md`](SECURITY.md) — pelaporan kerentanan.

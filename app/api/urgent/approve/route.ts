@@ -1,19 +1,45 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { canApproveOutbound } from "@/lib/rbac";
+import {
+  assertPatientAccess,
+  canApproveOutbound,
+  hasPermission,
+  PatientAccessError,
+  type Role
+} from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { createApproval, type ApprovalScope } from "@/lib/approval";
-import { createApiContext, deny, guardOrigin, guardRateLimit, ok } from "@/lib/apiRoute";
+import { approvalDenialDetail, createApproval, type ApprovalScope } from "@/lib/approval";
+import {
+  createApiContext,
+  deny,
+  guardBodySize,
+  guardOrigin,
+  guardRateLimit,
+  ok,
+  reportIdSchema,
+  triageLogIdSchema
+} from "@/lib/apiRoute";
 import { auditApiAccess } from "@/lib/audit";
 
-const bodySchema = z.object({
-  scope: z.enum(["URGENT", "REPORT"]),
-  resourceId: z.string().min(1),
-  channels: z
-    .array(z.enum(["WHATSAPP", "CALL", "EMAIL", "ESCALATION"]))
-    .min(1)
-    .max(4)
-});
+const bodySchema = z
+  .object({
+    scope: z.enum(["URGENT", "REPORT"]),
+    resourceId: z.union([triageLogIdSchema, reportIdSchema]),
+    channels: z
+      .array(z.enum(["WHATSAPP", "CALL", "EMAIL", "ESCALATION"]))
+      .max(4)
+      .default([]),
+    decision: z.enum(["GRANT", "DENY"]).default("GRANT"),
+    reason: z.string().trim().min(5).max(200).optional()
+  })
+  .refine((value) => value.decision !== "DENY" || Boolean(value.reason), {
+    message: "Penolakan wajib disertai alasan.",
+    path: ["reason"]
+  })
+  .refine((value) => value.decision !== "GRANT" || value.channels.length > 0, {
+    message: "Minimal satu kanal wajib dipilih.",
+    path: ["channels"]
+  });
 
 export async function POST(request: Request): Promise<NextResponse> {
   const ctx = await createApiContext(request, "/api/urgent/approve");
@@ -30,20 +56,62 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
   const limited = await guardRateLimit(ctx, `approve:${ctx.userId ?? ctx.ip}`, 30, 60_000);
   if (limited) return limited;
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const tooLarge = await guardBodySize(ctx);
+  if (tooLarge) return tooLarge;
+  const parsed = bodySchema.safeParse(await ctx.request.json().catch(() => null));
   if (!parsed.success) return deny(ctx, 400, "Data tidak valid.", "OUTBOUND_APPROVAL_INVALID");
-  const { scope, resourceId, channels } = parsed.data as {
+  const { scope, resourceId, channels, decision, reason } = parsed.data as {
     scope: ApprovalScope;
     resourceId: string;
     channels: string[];
+    decision: "GRANT" | "DENY";
+    reason?: string;
   };
   if (scope === "URGENT") {
     const log = await prisma.triageLog.findUnique({
       where: { id: resourceId },
-      select: { id: true }
+      select: { id: true, patientId: true }
     });
     if (!log) return deny(ctx, 404, "Triage log tidak ditemukan.", "OUTBOUND_APPROVAL_NOT_FOUND");
+    const sessionDoctorId = ctx.session?.user.doctorId;
+    try {
+      assertPatientAccess(
+        ctx.role as Role,
+        ctx.userId,
+        log.patientId,
+        ctx.session?.user.patientId,
+        sessionDoctorId ?? (ctx.role === "DOKTER" ? ctx.userId : null),
+        sessionDoctorId ?? (ctx.role === "DOKTER" ? ctx.userId : null)
+      );
+    } catch (error) {
+      if (!(error instanceof PatientAccessError)) throw error;
+      return deny(
+        ctx,
+        403,
+        "Akses ditolak: resource di luar scope Anda.",
+        "OUTBOUND_APPROVAL_OBJECT_DENIED"
+      );
+    }
+  } else if (!hasPermission(ctx.role, "report:read")) {
+    return deny(
+      ctx,
+      403,
+      "Akses ditolak: approval laporan butuh izin report:read.",
+      "OUTBOUND_APPROVAL_DENIED"
+    );
   }
+
+  if (decision === "DENY") {
+    await auditApiAccess({
+      request: ctx.request,
+      session: ctx.session,
+      action: "OUTBOUND_APPROVAL_DENIED_BY_APPROVER",
+      detail: approvalDenialDetail(scope, resourceId, reason ?? "Ditolak"),
+      requestId: ctx.requestId
+    });
+    return ok(ctx, { denied: true, scope, resourceId, requestId: ctx.requestId });
+  }
+
   const approval = await createApproval({
     scope,
     resourceId,

@@ -1,10 +1,11 @@
-import { PrismaClient, type Doctor, type Patient } from "@prisma/client";
+import { PrismaClient, type Doctor, type Patient } from "../generated/prisma/client";
 import bcrypt from "bcryptjs";
 import { encryptField, fieldHash, maskNik } from "../lib/crypto";
 import { evaluateTriage } from "../lib/triageRules";
-import { isProductionRuntime, isProductionSecret } from "../lib/env";
+import { assertDestructiveSeedAllowed, resolveSeedAdminPassword } from "./seed-guard";
+import { createPrismaAdapter } from "../lib/prisma-adapter";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: createPrismaAdapter() });
 
 interface Vitals {
   systolic: number;
@@ -133,20 +134,11 @@ function makePatients(): DummyPatient[] {
   });
 }
 
-async function main(): Promise<void> {
-  const production = isProductionRuntime();
-  if (production && process.env.ALLOW_SEED !== "true") {
-    throw new Error(
-      "Seeding diblokir di produksi. Set ALLOW_SEED=true hanya jika Anda sengaja mengisi ulang data uji."
-    );
-  }
-
-  const seedPassword = process.env.SEED_PASSWORD ?? "password123";
-  if (production && !isProductionSecret(seedPassword)) {
-    throw new Error("Produksi mensyaratkan SEED_PASSWORD acak minimal 32 byte untuk akun uji.");
-  }
-
-  console.log("[SEED] Membersihkan data dummy sebelumnya...");
+async function clearDummyData(): Promise<void> {
+  // Pertahanan ganda: guard juga dipanggil di awal main(), tetapi fungsi ini
+  // tetap menolak penghapusan bila dipanggil dari jalur lain.
+  assertDestructiveSeedAllowed();
+  console.log("[SEED] Membersihkan data dummy sebelumnya (development/test saja)...");
   await prisma.urgentCall.deleteMany();
   await prisma.triageLog.deleteMany();
   await prisma.notification.deleteMany();
@@ -164,8 +156,14 @@ async function main(): Promise<void> {
   await prisma.doctor.deleteMany();
   await prisma.medicineStock.deleteMany();
   await prisma.patient.deleteMany();
+}
 
-  const passwordHash = await bcrypt.hash(seedPassword, production ? 12 : 10);
+async function main(): Promise<void> {
+  assertDestructiveSeedAllowed();
+  await clearDummyData();
+
+  const seedPassword = resolveSeedAdminPassword();
+  const passwordHash = await bcrypt.hash(seedPassword, 12);
 
   const doctors: Doctor[] = [];
   for (const [name, specialty] of [
@@ -418,15 +416,9 @@ async function main(): Promise<void> {
   });
 
   console.log("[SEED] Selesai: 20 pasien, 3 MERAH, 5 KUNING, 12 HIJAU.");
-  if (production) {
-    console.log(
-      "[SEED] Akun uji memakai SEED_PASSWORD dari environment (tidak ditampilkan di log)."
-    );
-  } else {
-    console.log(
-      "[SEED] Login uji lokal: dokter@klinik.example / resepsionis@klinik.example / password123"
-    );
-  }
+  console.log(
+    "[SEED] Kata sandi akun uji berasal dari SEED_ADMIN_PASSWORD (atau nilai acak yang dicetak sekali di atas)."
+  );
 }
 
 main()

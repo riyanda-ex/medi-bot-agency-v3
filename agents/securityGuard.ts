@@ -118,15 +118,15 @@ export interface SecurityStatus {
   checkedAt: string;
 }
 
-/** Pemeriksaan konfigurasi keamanan. Tidak mengubah data kecuali pembersihan audit kedaluwarsa. */
+/** Pemeriksaan konfigurasi keamanan. Bersifat read-only: audit bukan untuk dihapus rutin. */
 export async function runSecurityGuard(): Promise<SecurityStatus> {
   const key = process.env.FIELD_ENCRYPTION_KEY ?? "";
   const cutoff = new Date(Date.now() - AUDIT_RETENTION_DAYS * 86_400_000);
   const expired = await prisma.auditLog.count({ where: { createdAt: { lt: cutoff } } });
 
-  if (expired > 0) {
-    await prisma.auditLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
-  }
+  // Audit log adalah bukti forensik: tidak dihapus oleh job rutin. Baris yang
+  // melewati retensi wajib diarsipkan ke WORM/SIEM oleh operator terlebih dahulu
+  // (lihat docs/EXTERNAL-INFRA.md), baru bisa dihapus lewat prosedur resmi.
 
   const status: SecurityStatus = {
     encryptionKeyConfigured: !isPlaceholderSecret(key) && key.length >= 32,

@@ -1,5 +1,8 @@
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
-const PASSWORD = process.env.E2E_PASSWORD ?? "password123";
+const PASSWORD = process.env.E2E_PASSWORD;
+if (!PASSWORD) {
+  throw new Error("E2E_PASSWORD wajib diisi (tidak ada kata sandi uji bawaan).");
+}
 const EXPECTED_DIAGNOSIS = process.env.E2E_EXPECTED_DIAGNOSIS ?? "Perlu tindak lanjut segera";
 
 const accounts = {
@@ -46,7 +49,7 @@ async function login(email, password = PASSWORD) {
     redirect: "manual"
   });
   storeCookies(response, jar);
-  if (!jar.has("next-auth.session-token")) {
+  if (!jar.has("authjs.session-token")) {
     throw new Error(`Login gagal untuk ${email}: ${await response.text()}`);
   }
   return jar;
@@ -67,10 +70,12 @@ async function main() {
   const receptionist = await login(accounts.receptionist);
   const admin = await login(accounts.admin);
   const patient = await login(accounts.patient);
-  const doctorAuth = { cookie: cookieHeader(doctor) };
-  const receptionistAuth = { cookie: cookieHeader(receptionist) };
-  const adminAuth = { cookie: cookieHeader(admin) };
-  const patientAuth = { cookie: cookieHeader(patient) };
+  // Browser mengirim Origin otomatis pada request mutasi; script harus menirunya
+  // karena enforceSameOrigin kini aktif untuk semua endpoint cookie-auth.
+  const doctorAuth = { cookie: cookieHeader(doctor), origin: BASE };
+  const receptionistAuth = { cookie: cookieHeader(receptionist), origin: BASE };
+  const adminAuth = { cookie: cookieHeader(admin), origin: BASE };
+  const patientAuth = { cookie: cookieHeader(patient), origin: BASE };
 
   const doctorDashboard = await (await fetch(`${BASE}/dashboard`, { headers: doctorAuth })).text();
   const receptionistDashboard = await (
@@ -136,12 +141,15 @@ async function main() {
     typeof chat.reply === "string" && chat.reply.length > 10
   );
 
+  // Object-level RBAC: DOKTER hanya boleh triase pasien yang ditangani dokter
+  // tersebut. diagnosisPatientId sudah terbukti berada dalam scope sesi dokter.
+  const triagePatientId = diagnosisPatientId;
   const startedAt = Date.now();
   const { body: triage } = await jsonFetch(`${BASE}/api/triage`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...doctorAuth },
     body: JSON.stringify({
-      patientId: patients[0].id,
+      patientId: triagePatientId,
       complaint: "Uji end-to-end",
       vitals: { systolic: 190, diastolic: 120 }
     })
@@ -154,7 +162,7 @@ async function main() {
     method: "POST",
     headers: { "Content-Type": "application/json", ...doctorAuth },
     body: JSON.stringify({
-      patientId: patients[0].id,
+      patientId: triagePatientId,
       visitId: triage.visitId,
       triageLogId: triage.triageLogId
     })
@@ -179,7 +187,7 @@ async function main() {
     generateResponse.status === 200 &&
       typeof generated.summary?.newPatients === "number" &&
       typeof generated.summary?.visits7Days?.length === "number",
-    `newPatients=${generated.summary?.newPatients}`
+    `status=${generateResponse.status} newPatients=${generated.summary?.newPatients ?? "-"} body=${JSON.stringify(generated).slice(0, 300)}`
   );
 
   const pdfResponse = await fetch(`${BASE}/api/reports/download?type=pdf`, { headers: doctorAuth });

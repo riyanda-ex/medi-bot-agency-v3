@@ -2,10 +2,18 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { hasPermission } from "@/lib/rbac";
 import { runReporter } from "@/agents/reporter";
-import { createApiContext, deny, guardOrigin, guardRateLimit, ok } from "@/lib/apiRoute";
+import {
+  approvalIdSchema,
+  createApiContext,
+  deny,
+  guardBodySize,
+  guardOrigin,
+  guardRateLimit,
+  ok
+} from "@/lib/apiRoute";
 import { auditApiAccess } from "@/lib/audit";
 
-const bodySchema = z.object({ approvalId: z.string().min(1).optional() });
+const bodySchema = z.object({ approvalId: approvalIdSchema.optional() });
 
 export async function POST(request: Request): Promise<NextResponse> {
   const ctx = await createApiContext(request, "/api/reports/generate");
@@ -16,7 +24,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
   const limited = await guardRateLimit(ctx, `report-generate:${ctx.userId ?? ctx.ip}`, 10, 60_000);
   if (limited) return limited;
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const tooLarge = await guardBodySize(ctx);
+  if (tooLarge) return tooLarge;
+  const parsed = bodySchema.safeParse(await ctx.request.json().catch(() => null));
   if (!parsed.success) return deny(ctx, 400, "Data tidak valid.", "REPORT_GENERATE_INVALID");
   const result = await runReporter(new Date(), parsed.data.approvalId);
   await auditApiAccess({ request: ctx.request, session: ctx.session, action: "REPORT_GENERATE", detail: `Laporan ${result.reportId} dibuat (PDF + Excel).`, requestId: ctx.requestId });

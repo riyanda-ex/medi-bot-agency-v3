@@ -13,7 +13,7 @@ import ExcelJS from "exceljs";
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
 import { writeAgentLog } from "@/lib/agentLog";
-import { verifyApproval } from "@/lib/approval";
+import { approvalAllowsChannel, verifyApproval } from "@/lib/approval";
 import { publicReportName } from "@/lib/reportFiles";
 
 export interface DailyReportData {
@@ -209,9 +209,13 @@ export async function sendReportEmail(
   let approvalOk = false;
   let approvalReason = "Email mock: pengiriman nyata tidak diminta.";
   if (outboundRequested) {
-    const approval = await verifyApproval(approvalId, "REPORT", resourceId);
-    approvalOk = approval.ok;
-    approvalReason = approval.reason;
+    const approval = await verifyApproval(approvalId, "REPORT", resourceId, {
+      consume: true,
+      consumptionKey: `report:${resourceId}:${recipient}`,
+      action: "REPORT_EMAIL_SEND"
+    });
+    approvalOk = approvalAllowsChannel(approval, "EMAIL");
+    approvalReason = approval.ok ? "Kanal EMAIL tidak termasuk dalam approval." : approval.reason;
   }
 
   if (!outboundRequested || !approvalOk) {

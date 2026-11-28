@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auditApiAccess } from "@/lib/audit";
 import { chatbotReply } from "@/agents/engagement";
-import { createApiContext, deny, guardOrigin, guardRateLimit, ok } from "@/lib/apiRoute";
+import {
+  createApiContext,
+  deny,
+  guardBodySize,
+  guardOrigin,
+  guardRateLimit,
+  ok
+} from "@/lib/apiRoute";
 
 const bodySchema = z.object({
   message: z.string().min(1).max(500)
@@ -21,7 +28,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   const limited = await guardRateLimit(ctx, `chatbot:${ctx.session.user.id}:${ctx.ip}`, 20, 60_000);
   if (limited) return limited;
 
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const tooLarge = await guardBodySize(ctx);
+  if (tooLarge) return tooLarge;
+
+  const parsed = bodySchema.safeParse(await ctx.request.json().catch(() => null));
   if (!parsed.success) {
     return deny(
       ctx,
