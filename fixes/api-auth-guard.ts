@@ -2,10 +2,10 @@
  * Guard handler API. Mengembalikan true bila role diizinkan.
  * Peran tidak dikenal dinormalisasi menjadi TIDAK_AKTIF (tanpa izin).
  */
-import { PERMISSIONS, normalizeRole, type Role } from "../lib/rbac";
+import { hasPermission, normalizeRole, type Role } from "../lib/rbac";
 
 export function isRoleAllowed(role: Role, permission: string): boolean {
-  return PERMISSIONS[role]?.includes(permission) ?? false;
+  return hasPermission(role, permission);
 }
 
 export function requirePermission(role: unknown, permission: string): void {

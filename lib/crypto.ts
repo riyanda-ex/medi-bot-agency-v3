@@ -78,6 +78,14 @@ function signingKey(): Buffer {
   const acceptable = (value: string | null | undefined): boolean =>
     Buffer.byteLength(value ?? "", "utf8") >= 32 &&
     (production ? isProductionSecret(value) : !isPlaceholderSecret(value));
+  if (production && !acceptable(secret) && !acceptable(fieldKey)) {
+    // Fail-closed: kunci DEV bersifat publik. Memakainya di produksi membuat
+    // tanda tangan audit/approval/job bisa dipalsukan siapa pun.
+    throw new Error(
+      "Produksi menolak fallback kunci DEV untuk HMAC. " +
+        "NEXTAUTH_SECRET atau FIELD_ENCRYPTION_KEY wajib kunci acak minimal 32 byte."
+    );
+  }
   const material = acceptable(secret)
     ? (secret as string)
     : acceptable(fieldKey)

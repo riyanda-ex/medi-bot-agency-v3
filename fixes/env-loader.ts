@@ -3,11 +3,16 @@
  * Dihasilkan oleh Bug Hunter untuk mencegah kunci hardcode.
  */
 import { z } from "zod";
+import { isStrongSecret } from "../lib/env";
+
+const strongSecret = z
+  .string()
+  .refine((value) => isStrongSecret(value, 16), "minimal 16 byte dan bukan nilai placeholder");
 
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
-  NEXTAUTH_SECRET: z.string().min(16),
-  FIELD_ENCRYPTION_KEY: z.string().min(16),
+  NEXTAUTH_SECRET: strongSecret,
+  FIELD_ENCRYPTION_KEY: strongSecret,
   ALLOW_REAL_OUTBOUND: z.enum(["true", "false"]).default("false")
 });
 

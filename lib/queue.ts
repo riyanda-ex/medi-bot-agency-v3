@@ -5,11 +5,13 @@
  * bisa menyuntik job pengiriman nyata tanpa kunci server.
  */
 
-import { Queue, Worker, type JobsOptions } from "bullmq";
-import Redis from "ioredis";
+import type { Queue, Worker, JobsOptions } from "bullmq";
+import type Redis from "ioredis";
 import { z } from "zod";
 import { signPayload, verifyPayloadSignature } from "@/lib/crypto";
 import { assertSecureEnvironment, isProductionRuntime } from "@/lib/env";
+import { writeAgentLog } from "@/lib/agentLog";
+import { logger } from "@/lib/logger";
 
 export const QUEUE_NAME = "tasks";
 export const DEFAULT_QUEUE_PREFIX = "medi-bot";
@@ -148,26 +150,32 @@ export function buildUrgentJobId(
   return `${prefix}-${triageLogId}-${hash}`;
 }
 
-function getConnection(): Redis {
+async function getConnection(): Promise<Redis> {
   if (connection) return connection;
 
   const url = process.env.REDIS_URL;
   if (!url) throw new Error("REDIS_URL wajib diisi ketika QUEUE_MODE=redis.");
   assertRedisSecurity();
 
-  connection = new Redis(url, {
+  // Mode default sync: jangan memuat klien Redis saat tidak dipakai.
+  const { default: RedisClient } = await import("ioredis");
+  connection = new RedisClient(url, {
     maxRetriesPerRequest: null,
     ...(process.env.REDIS_TLS === "true" ? { tls: {} } : {})
   });
   connection.on("error", (error: Error) => {
-    console.error("[QUEUE] Koneksi Redis bermasalah:", error.message);
+    logger.error("queue.redis_error", { detail: error.message });
   });
   return connection;
 }
 
-function getQueue(): Queue {
+async function getQueue(): Promise<Queue> {
   if (queue) return queue;
-  queue = new Queue(QUEUE_NAME, { connection: getConnection(), prefix: queuePrefix() });
+  const { Queue: QueueClient } = await import("bullmq");
+  queue = new QueueClient(QUEUE_NAME, {
+    connection: await getConnection(),
+    prefix: queuePrefix()
+  });
   return queue;
 }
 
@@ -196,7 +204,7 @@ export async function enqueueJob<K extends QueueJobName>(
 
   assertSecureEnvironment();
   assertRedisSecurity();
-  const job = await getQueue().add(name, signJobPayload(payload), buildJobOptions(options));
+  const job = await (await getQueue()).add(name, signJobPayload(payload), buildJobOptions(options));
   return {
     mode: "redis",
     jobId: job.id,
@@ -213,7 +221,8 @@ export async function startQueueWorker(handlers: QueueHandlers): Promise<Worker 
   if (!isQueueEnabled()) return null;
   assertSecureEnvironment();
 
-  const worker = new Worker(
+  const { Worker: WorkerClient } = await import("bullmq");
+  const worker = new WorkerClient(
     QUEUE_NAME,
     async (job) => {
       if (job.name === "orchestrator.run") {
@@ -225,17 +234,33 @@ export async function startQueueWorker(handlers: QueueHandlers): Promise<Worker 
       throw new Error(`Job tidak dikenal: ${job.name}`);
     },
     {
-      connection: getConnection(),
+      connection: await getConnection(),
       prefix: queuePrefix(),
       concurrency: Math.max(1, Number(process.env.QUEUE_CONCURRENCY ?? 2))
     }
   );
 
   worker.on("completed", (job) => {
-    console.log(`[QUEUE] Selesai: ${job.name} (${job.id ?? "-"})`);
+    logger.info("queue.job_completed", { name: job.name, jobId: job.id ?? "-" });
   });
   worker.on("failed", (job, error) => {
-    console.error(`[QUEUE] Gagal: ${job?.name ?? "?"} (${job?.id ?? "-"}) - ${error.message}`);
+    const jobId = job?.id ?? "-";
+    logger.error("queue.job_failed", {
+      name: job?.name ?? "?",
+      jobId,
+      attemptsMade: job?.attemptsMade ?? 0,
+      detail: error.message
+    });
+    // Dead-letter log: job gagal setelah retry terakhir masih perlu ditindaklanjuti.
+    if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+      void writeAgentLog({
+        agentName: "QUEUE_DLQ",
+        status: "FAILED",
+        message: `Job ${job.name} (${jobId}) gagal setelah ${job.attemptsMade} percobaan: ${error.message}`,
+        payload: JSON.stringify({ name: job.name, jobId, data: job.data }).slice(0, 2000),
+        runId: jobId
+      });
+    }
   });
 
   return worker;

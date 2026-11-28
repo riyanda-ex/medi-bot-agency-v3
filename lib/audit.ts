@@ -42,26 +42,78 @@ function headerValue(headers: HeaderBag, name: string): string | null {
 }
 
 function cleanIp(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const candidate = value.split(",")[0]?.trim() ?? "";
+  const candidate = (value ?? "").trim();
   if (!candidate || candidate.length > 45) return null;
   return isIP(candidate) ? candidate : null;
 }
 
+/** X-Forwarded-For ditulis kiri -> kanan: klien asli, lalu tiap proxy. */
+function forwardedChain(value: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((item) => cleanIp(item))
+    .filter((item): item is string => Boolean(item));
+}
+
+function ipv4ToInt(ip: string): number | null {
+  const parts = ip.split(".");
+  if (parts.length !== 4) return null;
+  let value = 0;
+  for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part)) return null;
+    const octet = Number(part);
+    if (octet > 255) return null;
+    value = value * 256 + octet;
+  }
+  return value;
+}
+
+function matchesProxy(ip: string, proxy: string): boolean {
+  if (proxy === "*") return true;
+  if (proxy === ip) return true;
+  if (!proxy.includes("/")) return false;
+  const [base, bitsRaw] = proxy.split("/");
+  const bits = Number(bitsRaw);
+  const ipValue = ipv4ToInt(ip);
+  const baseValue = ipv4ToInt(base ?? "");
+  if (ipValue === null || baseValue === null || !Number.isInteger(bits) || bits < 0 || bits > 32) {
+    return false;
+  }
+  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+  return (ipValue & mask) >>> 0 === (baseValue & mask) >>> 0;
+}
+
+function isTrustedProxy(ip: string, proxies: string[]): boolean {
+  return proxies.some((proxy) => matchesProxy(ip, proxy));
+}
+
 /**
- * Header forwarding hanya dipercaya bila TRUST_PROXY dikonfigurasi.
- * Tanpa TRUST_PROXY, header klien diabaikan untuk mencegah spoofing IP audit/rate-limit.
- * Saat memakai reverse proxy, set TRUST_PROXY ke IP proxy tepercaya (atau '*'
- * hanya jika jaringan benar-benar menjamin semua request lewat proxy tepercaya).
+ * Hanya mempercayai rantai `X-Forwarded-For` bila TRUST_PROXY dikonfigurasi.
+ *
+ * Penyerang bisa mengganti bagian kiri XFF. Karena itu kita membaca dari hop
+ * paling kanan (peer yang dilihat proxy terdekat) dan melewati hop yang memang
+ * terdaftar sebagai proxy tepercaya. Nilai paling kiri TIDAK pernah dipakai.
+ * Tanpa TRUST_PROXY semua header diabaikan agar audit/rate-limit tidak bisa
+ * dispoof. Gunakan CIDR IPv4 atau IP eksak di TRUST_PROXY; `'*'` hanya boleh
+ * bila jaringan menjamin semua request melewati proxy tepercaya.
  */
 export function getRequestIp(source: Request | HeaderBag): string {
   const headers = source instanceof Request ? source.headers : source;
   const proxies = trustedProxies();
   if (proxies.length === 0) return "unknown";
 
-  const forwarded = cleanIp(headerValue(headers, "x-forwarded-for"));
-  const realIp = cleanIp(headerValue(headers, "x-real-ip"));
-  return forwarded ?? realIp ?? "unknown";
+  const chain = forwardedChain(headerValue(headers, "x-forwarded-for"));
+  if (chain.length === 0) {
+    return cleanIp(headerValue(headers, "x-real-ip")) ?? "unknown";
+  }
+
+  for (let index = chain.length - 1; index >= 0; index -= 1) {
+    const hop = chain[index] as string;
+    if (!isTrustedProxy(hop, proxies)) return hop;
+  }
+  // Semua hop terdaftar (mis. TRUST_PROXY=*): tidak ada petunjuk klien asli.
+  return chain[0] as string;
 }
 
 export async function ensureSystemActor(): Promise<string> {

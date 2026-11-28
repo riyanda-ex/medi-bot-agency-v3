@@ -1,24 +1,15 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { canApproveOutbound } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { createApproval, type ApprovalScope } from "@/lib/approval";
-import { createApiContext, deny, guardOrigin, guardRateLimit, ok } from "@/lib/apiRoute";
+import { deny, guardRateLimit, ok, withApi } from "@/lib/apiRoute";
 import { auditApiAccess } from "@/lib/audit";
-
-const bodySchema = z.object({
-  scope: z.enum(["URGENT", "REPORT"]),
-  resourceId: z.string().min(1),
-  channels: z
-    .array(z.enum(["WHATSAPP", "CALL", "EMAIL", "ESCALATION"]))
-    .min(1)
-    .max(4)
-});
+import { urgentApproveBodySchema } from "@/lib/schemas";
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const ctx = await createApiContext(request, "/api/urgent/approve");
-  const originBlocked = guardOrigin(ctx);
-  if (originBlocked) return originBlocked;
+  const gate = await withApi(request, { path: "/api/urgent/approve" });
+  if (gate.response) return gate.response;
+  const { ctx } = gate;
   if (!canApproveOutbound(ctx.role) || ctx.sessionInvalid) {
     return deny(
       ctx,
@@ -30,7 +21,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
   const limited = await guardRateLimit(ctx, `approve:${ctx.userId ?? ctx.ip}`, 30, 60_000);
   if (limited) return limited;
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const parsed = urgentApproveBodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return deny(ctx, 400, "Data tidak valid.", "OUTBOUND_APPROVAL_INVALID");
   const { scope, resourceId, channels } = parsed.data as {
     scope: ApprovalScope;

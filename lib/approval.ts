@@ -11,6 +11,7 @@ import { signPayload, verifyPayloadSignature } from "@/lib/crypto";
 import { requireHumanApproval } from "@/lib/env";
 
 export const APPROVAL_ACTION = "OUTBOUND_APPROVAL";
+export const APPROVAL_CONSUMPTION_ACTION = "OUTBOUND_APPROVAL_CONSUMED";
 export const APPROVAL_TTL_MS = 30 * 60_000;
 
 export type ApprovalScope = "URGENT" | "REPORT";
@@ -56,7 +57,7 @@ export async function createApproval(input: {
     resourceId: input.resourceId,
     approverId: input.approverId,
     role: normalizeRole(input.role),
-    channels: input.channels,
+    channels: input.channels.map((channel) => channel.toUpperCase()),
     expiresAt: new Date(Date.now() + APPROVAL_TTL_MS).toISOString()
   };
 
@@ -77,16 +78,35 @@ export async function createApproval(input: {
   return record;
 }
 
+export interface ApprovalUse {
+  channel: string;
+  /** Tahap pengiriman, mis. `CALL:120` atau `REPORT:<tanggal>`. */
+  stage?: string;
+}
+
+function consumptionKey(approvalId: string, use: ApprovalUse): string {
+  return `${approvalId}|${use.channel.toUpperCase()}|${use.stage ?? "-"}`;
+}
+
+/**
+ * Verifikasi sekaligus "pakai" approval. Approval terikat kanal dan tahap:
+ * ID yang disetujui untuk WHATSAPP tidak bisa dipakai untuk CALL/ESCALATION,
+ * dan tidak bisa dipakai dua kali untuk tahap yang sama.
+ */
 export async function verifyApproval(
   approvalId: string | undefined,
   scope: ApprovalScope,
-  resourceId: string
+  resourceId: string,
+  use?: ApprovalUse
 ): Promise<ApprovalVerification> {
   if (!requireHumanApproval()) {
     return { ok: true, reason: "Approval tidak diwajibkan di lingkungan pengembangan." };
   }
   if (!approvalId) {
     return { ok: false, reason: "Approval manusia belum diberikan." };
+  }
+  if (!use?.channel) {
+    return { ok: false, reason: "Kanal tindakan wajib disertakan saat verifikasi approval." };
   }
 
   const row = await prisma.auditLog.findFirst({
@@ -119,8 +139,23 @@ export async function verifyApproval(
   if (record.scope !== scope || record.resourceId !== resourceId) {
     return { ok: false, reason: "Approval tidak sesuai dengan tindakan ini." };
   }
+  if (!record.channels.includes(use.channel.toUpperCase())) {
+    return {
+      ok: false,
+      reason: `Approval tidak mencakup kanal ${use.channel.toUpperCase()}.`
+    };
+  }
   if (Date.parse(record.expiresAt) < Date.now()) {
     return { ok: false, reason: "Approval kedaluwarsa." };
+  }
+
+  const key = consumptionKey(approvalId, use);
+  const used = await prisma.auditLog.findFirst({
+    where: { action: APPROVAL_CONSUMPTION_ACTION, detail: { startsWith: `${key}|` } },
+    select: { id: true }
+  });
+  if (used) {
+    return { ok: false, reason: "Approval sudah dipakai untuk kanal/tahap ini." };
   }
 
   const approver = await prisma.user.findUnique({
@@ -134,6 +169,21 @@ export async function verifyApproval(
   ) {
     return { ok: false, reason: "Penyetuju tidak berwenang atau sudah dinonaktifkan." };
   }
+
+  const consumptionDetail = `${key}|${new Date().toISOString()}`;
+  await prisma.auditLog.create({
+    data: {
+      actorId: record.approverId,
+      role: record.role,
+      action: APPROVAL_CONSUMPTION_ACTION,
+      ipAddress: "-",
+      method: "-",
+      path: "-",
+      userAgent: "-",
+      detail: consumptionDetail,
+      signature: signPayload(consumptionDetail)
+    }
+  });
 
   return { ok: true, reason: "Approval valid.", approverId: record.approverId };
 }

@@ -15,6 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { writeAgentLog } from "@/lib/agentLog";
 import { verifyApproval } from "@/lib/approval";
 import { publicReportName } from "@/lib/reportFiles";
+import { wibDateKey, wibDayRange } from "@/lib/date";
 
 export interface DailyReportData {
   date: string;
@@ -30,19 +31,8 @@ export interface DailyReportData {
   generatedAt: string;
 }
 
-function wibRange(date: Date): { start: Date; end: Date } {
-  const wibNow = new Date(date.getTime() + 7 * 3_600_000);
-  const year = wibNow.getUTCFullYear();
-  const month = wibNow.getUTCMonth();
-  const day = wibNow.getUTCDate();
-  return {
-    start: new Date(Date.UTC(year, month, day, -7)),
-    end: new Date(Date.UTC(year, month, day + 1, -7))
-  };
-}
-
 export async function buildDailyReport(date: Date = new Date()): Promise<DailyReportData> {
-  const { start, end } = wibRange(date);
+  const { start, end } = wibDayRange(date);
 
   const [
     newPatients,
@@ -81,13 +71,13 @@ export async function buildDailyReport(date: Date = new Date()): Promise<DailyRe
     const day = new Date(start.getTime() - offset * 86_400_000);
     const next = new Date(day.getTime() + 86_400_000);
     visits7Days.push({
-      date: day.toISOString().slice(0, 10),
+      date: wibDateKey(day),
       total: await prisma.visit.count({ where: { visitDate: { gte: day, lt: next } } })
     });
   }
 
   return {
-    date: start.toISOString().slice(0, 10),
+    date: wibDateKey(date),
     newPatients,
     controls,
     cancelled,
@@ -209,7 +199,10 @@ export async function sendReportEmail(
   let approvalOk = false;
   let approvalReason = "Email mock: pengiriman nyata tidak diminta.";
   if (outboundRequested) {
-    const approval = await verifyApproval(approvalId, "REPORT", resourceId);
+    const approval = await verifyApproval(approvalId, "REPORT", resourceId, {
+      channel: "EMAIL",
+      stage: `REPORT:${resourceId}`
+    });
     approvalOk = approval.ok;
     approvalReason = approval.reason;
   }
@@ -257,6 +250,7 @@ export interface ReporterRunResult {
   data: DailyReportData;
   files: { pdf: string; excel: string };
   email: { sent: boolean; simulated: boolean; detail: string };
+  status: "SUCCESS" | "PARTIAL";
 }
 
 export async function runReporter(
@@ -265,30 +259,38 @@ export async function runReporter(
 ): Promise<ReporterRunResult> {
   const startedAt = Date.now();
   const data = await buildDailyReport(date);
-  const dir = path.join(process.cwd(), "reports", data.date);
+  const recipient = process.env.ALERT_EMAIL ?? "pimpinan@klinik.example";
+
+  // Baris laporan dibuat lebih dulu supaya setiap generate punya direktori unik.
+  // Generasi ulang tidak lagi menimpa file laporan sebelumnya.
+  const report = await prisma.report.create({
+    data: {
+      reportDate: new Date(),
+      type: "DAILY",
+      payload: JSON.stringify(data),
+      recipients: recipient,
+      status: "PENDING"
+    }
+  });
+
+  const dir = path.join(process.cwd(), "reports", data.date, report.id);
   const pdfPath = path.join(dir, "laporan-harian.pdf");
   const excelPath = path.join(dir, "laporan-harian.xlsx");
 
   await Promise.all([generateReportPdf(data, pdfPath), generateReportExcel(data, excelPath)]);
 
-  const recipient = process.env.ALERT_EMAIL ?? "pimpinan@klinik.example";
   const email = await sendReportEmail([pdfPath, excelPath], recipient, data.date, approvalId);
+  // File sudah tersedia walaupun email gagal: laporkan PARTIAL, bukan FAILED.
+  const status = email.sent || email.simulated ? "SUCCESS" : "PARTIAL";
 
-  const report = await prisma.report.create({
-    data: {
-      reportDate: new Date(),
-      type: "DAILY",
-      filePathPdf: pdfPath,
-      filePathExcel: excelPath,
-      payload: JSON.stringify(data),
-      recipients: recipient,
-      status: email.sent || email.simulated ? "GENERATED" : "FAILED"
-    }
+  await prisma.report.update({
+    where: { id: report.id },
+    data: { filePathPdf: pdfPath, filePathExcel: excelPath, status }
   });
 
   await writeAgentLog({
     agentName: "AUTO_REPORTER",
-    status: "SUCCESS",
+    status,
     message: `Laporan ${data.date} dibuat (PDF + Excel), email simulasi=${email.simulated}`,
     durationMs: Date.now() - startedAt,
     runId: report.id
@@ -299,6 +301,7 @@ export async function runReporter(
     reportId: report.id,
     data,
     files: { pdf: publicReportName(pdfPath), excel: publicReportName(excelPath) },
-    email
+    email,
+    status
   };
 }

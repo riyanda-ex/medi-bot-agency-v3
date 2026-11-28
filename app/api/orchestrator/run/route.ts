@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { hasPermission } from "@/lib/rbac";
 import { runAllAgents } from "@/agents/orchestrator";
-import { createApiContext, deny, guardOrigin, guardRateLimit, ok } from "@/lib/apiRoute";
+import { deny, guardRateLimit, ok, withApi } from "@/lib/apiRoute";
 import { auditApiAccess } from "@/lib/audit";
 import { enqueueJob } from "@/lib/queue";
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const ctx = await createApiContext(request, "/api/orchestrator/run");
-  const originBlocked = guardOrigin(ctx);
-  if (originBlocked) return originBlocked;
+  const gate = await withApi(request, { path: "/api/orchestrator/run" });
+  if (gate.response) return gate.response;
+  const { ctx } = gate;
   if (!hasPermission(ctx.role, "agent:run") || ctx.sessionInvalid) {
     return deny(
       ctx,

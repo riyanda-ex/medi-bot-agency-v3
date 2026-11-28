@@ -14,10 +14,11 @@ import { runSecurityGuard } from "@/agents/securityGuard";
 import { runEngagement } from "@/agents/engagement";
 import { runUrgentTriage } from "@/agents/urgentCaller";
 import { runBugHunter } from "@/agents/bugHunter";
+import { logger } from "@/lib/logger";
 
 export interface AgentOutcome {
   name: string;
-  status: "SUCCESS" | "FAILED";
+  status: "SUCCESS" | "PARTIAL" | "FAILED";
   attempts: number;
   detail: string;
   durationMs: number;
@@ -35,24 +36,30 @@ const RETRY_LIMIT = 3;
 async function withRetry(
   name: string,
   task: () => Promise<unknown>,
-  runId: string
+  runId: string,
+  idempotent = true
 ): Promise<AgentOutcome> {
   const startedAt = Date.now();
   let lastError = "";
+  // Agen dengan efek samping (file/email/notifikasi/job) tidak boleh diulang
+  // otomatis: retry akan menggandakan data. Idempotency ditangani per tahap.
+  const maxAttempts = idempotent ? RETRY_LIMIT : 1;
 
-  for (let attempt = 1; attempt <= RETRY_LIMIT; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const result = await task();
+      const partial = (result as { status?: unknown } | null)?.status === "PARTIAL";
+      const status = partial ? "PARTIAL" : "SUCCESS";
       const outcome: AgentOutcome = {
         name,
-        status: "SUCCESS",
+        status,
         attempts: attempt,
         detail: JSON.stringify(result).slice(0, 2000),
         durationMs: Date.now() - startedAt
       };
       await writeAgentLog({
         agentName: name,
-        status: "SUCCESS",
+        status,
         message: outcome.detail,
         durationMs: outcome.durationMs,
         runId
@@ -60,7 +67,7 @@ async function withRetry(
       return outcome;
     } catch (error) {
       lastError = (error as Error).message;
-      if (attempt < RETRY_LIMIT) {
+      if (attempt < maxAttempts) {
         await new Promise((resolve) =>
           setTimeout(resolve, process.env.SYNC_MODE === "true" ? 1 : 1000)
         );
@@ -71,7 +78,7 @@ async function withRetry(
   const outcome: AgentOutcome = {
     name,
     status: "FAILED",
-    attempts: RETRY_LIMIT,
+    attempts: maxAttempts,
     detail: lastError,
     durationMs: Date.now() - startedAt
   };
@@ -85,7 +92,10 @@ async function withRetry(
   return outcome;
 }
 
-export async function checkRedPatients(runId: string): Promise<{ found: number; logged: number }> {
+export async function checkRedPatients(
+  runId: string,
+  approvalId?: string
+): Promise<{ found: number; logged: number }> {
   const since = new Date(Date.now() - 5 * 60_000);
   const redLogs = await prisma.triageLog.findMany({
     where: { level: "MERAH", createdAt: { gte: since } },
@@ -94,15 +104,29 @@ export async function checkRedPatients(runId: string): Promise<{ found: number; 
 
   let logged = 0;
   for (const log of redLogs) {
-    const alreadyCalled = await prisma.urgentCall.count({
-      where: { triageLogId: log.id, createdAt: { gte: log.createdAt } }
+    // Simulasi (SIMULATED) dan kegagalan (FAILED) TIDAK boleh menekan
+    // tindak-lanjut nyata. QUEUED/SENT/ESCALATED menandakan sudah ditangani.
+    const handled = await prisma.urgentCall.count({
+      where: {
+        triageLogId: log.id,
+        status: { in: ["QUEUED", "SENT", "ESCALATED"] },
+        createdAt: { gte: log.createdAt }
+      }
     });
-    if (alreadyCalled > 0) continue;
+    const checkedAgain = await prisma.triageLog.count({
+      where: {
+        visitId: log.visitId,
+        source: "ORCHESTRATOR_RED_CHECK",
+        createdAt: { gte: since }
+      }
+    });
+    if (handled > 0 || checkedAgain > 0) continue;
 
     await runUrgentTriage({
       patientId: log.patientId,
       visitId: log.visitId ?? undefined,
-      source: "ORCHESTRATOR_RED_CHECK"
+      source: "ORCHESTRATOR_RED_CHECK",
+      approvalId
     });
     logged += 1;
   }
@@ -123,19 +147,27 @@ export async function runAllAgents(): Promise<OrchestratorRun> {
 
   const outcomes: AgentOutcome[] = [];
   outcomes.push(await withRetry("RME_ANALYZER", runAnalyzer, runId));
-  outcomes.push(await withRetry("AUTO_REPORTER", () => runReporter(), runId));
+  outcomes.push(await withRetry("AUTO_REPORTER", () => runReporter(), runId, false));
   outcomes.push(await withRetry("SECURITY_GUARD", runSecurityGuard, runId));
-  outcomes.push(await withRetry("PATIENT_ENGAGEMENT", runEngagement, runId));
+  outcomes.push(await withRetry("PATIENT_ENGAGEMENT", runEngagement, runId, false));
   outcomes.push(await withRetry("BUG_HUNTER", () => runBugHunter(), runId));
   outcomes.push(
-    await withRetry("URGENT_CALLER", () => checkRedPatients(runId).then((r) => r.found), runId)
+    await withRetry(
+      "URGENT_CALLER",
+      () => checkRedPatients(runId).then((r) => r.found),
+      runId,
+      false
+    )
   );
 
   const finishedAt = new Date().toISOString();
+  const failed = outcomes.filter((item) => item.status === "FAILED").length;
+  const partial = outcomes.filter((item) => item.status === "PARTIAL").length;
+  const status = failed > 0 ? "FAILED" : partial > 0 ? "PARTIAL" : "SUCCESS";
   await writeAgentLog({
     agentName: "ORCHESTRATOR",
-    status: "SUCCESS",
-    message: `Run ${runId} selesai: ${outcomes.filter((item) => item.status === "SUCCESS").length}/${outcomes.length} agent sukses`,
+    status,
+    message: `Run ${runId} selesai: ${outcomes.filter((item) => item.status === "SUCCESS").length}/${outcomes.length} agent sukses, ${partial} partial, ${failed} gagal`,
     payload: JSON.stringify(
       outcomes.map(({ name, status, attempts }) => ({ name, status, attempts }))
     ),
@@ -174,7 +206,7 @@ export function startScheduler(): ScheduledTask[] {
     )
   ];
 
-  console.log("[ORCHESTRATOR] Scheduler aktif (Asia/Jakarta).");
+  logger.info("orchestrator.scheduler_started", { timezone: "Asia/Jakarta" });
   return scheduledTasks;
 }
 

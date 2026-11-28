@@ -102,6 +102,28 @@ async function scheduleFollowUpJobs(options: RunOptions): Promise<StageResult[]>
 
   for (const stage of stages) {
     const stageOffset = stage.offsetSeconds;
+    // Placeholder QUEUED dipakai orchestrator untuk dedupe dan worker untuk
+    // update idempoten saat tahap benar-benar dijalankan.
+    await prisma.urgentCall.create({
+      data: {
+        patientId: options.patientId,
+        visitId: options.visitId,
+        triageLogId: options.triageLogId,
+        channel: stage.channel,
+        attempt: stageOffset === 300 ? 2 : 1,
+        status: "QUEUED",
+        provider:
+          stage.channel === "WHATSAPP"
+            ? "whatsapp"
+            : stage.channel === "CALL"
+              ? "phone"
+              : "internal",
+        simulated: true,
+        message: stage.label,
+        triggeredBy: options.actorId ?? "SYSTEM",
+        approvedBy: options.approvedBy ?? null
+      }
+    });
     const queued = await enqueueJob(
       "urgent.followup",
       {
@@ -309,15 +331,8 @@ export async function executeUrgentFollowUp(options: FollowUpOptions): Promise<S
   const patient = await prisma.patient.findUnique({ where: { id: options.patientId } });
   if (!patient) throw new Error("Pasien tidak ditemukan.");
 
-  let approval: ApprovalVerification = {
-    ok: false,
-    reason: "Simulasi tidak memerlukan approval."
-  };
-  if (options.simulate !== true && isOutboundAllowed()) {
-    approval = await verifyApproval(options.approvalId, "URGENT", options.triageLogId ?? "");
-  }
-  const mayRunReal =
-    options.simulate !== true && isOutboundAllowed() && approval.ok && requireHumanApproval();
+  const realRequested = options.simulate !== true && isOutboundAllowed();
+  const approvalRequired = requireHumanApproval();
 
   const phone = decryptField(patient.phoneEncrypted);
   const message = buildWhatsappMessage({
@@ -332,51 +347,86 @@ export async function executeUrgentFollowUp(options: FollowUpOptions): Promise<S
       : FOLLOWUP_STAGES.filter((stage) => stage.offsetSeconds === options.stageOffset);
 
   for (const stage of definitions) {
+    let approval: ApprovalVerification = {
+      ok: !approvalRequired,
+      reason: approvalRequired ? "Approval belum diverifikasi." : "Approval tidak diwajibkan."
+    };
+    if (realRequested && approvalRequired) {
+      approval = await verifyApproval(options.approvalId, "URGENT", options.triageLogId ?? "", {
+        channel: stage.channel,
+        stage: `${stage.channel}:${stage.offsetSeconds}`
+      });
+    }
+    const stageReal = realRequested && approval.ok;
+
     let status = stage.status;
     let detail = stage.detail;
-    if (stage.send === "WHATSAPP" && mayRunReal) {
-      const result: OutboundResult = await sendWhatsApp(phone, message);
+    let simulated = true;
+    let provider =
+      stage.channel === "WHATSAPP" ? "whatsapp" : stage.channel === "CALL" ? "phone" : "internal";
+    let result: OutboundResult | null = null;
+
+    if (stage.send === "WHATSAPP" && stageReal) {
+      result = await sendWhatsApp(phone, message);
+    } else if (stage.send === "CALL" && stageReal) {
+      result = await callPatient(phone, SPOKEN_MESSAGE);
+    }
+
+    if (result) {
       status = result.ok ? "SENT" : "FAILED";
-      detail = `${detail} | ${result.detail}`;
-    } else if (stage.send === "CALL" && mayRunReal) {
-      const result: OutboundResult = await callPatient(phone, SPOKEN_MESSAGE);
-      status = result.ok ? "SENT" : "FAILED";
+      // Provider mock mengembalikan simulated=true walaupun approval nyata ada.
+      simulated = result.simulated;
+      provider = result.provider;
       detail = `${detail} | ${result.detail}`;
     } else if (stage.channel === "ESCALATION") {
-      status = mayRunReal ? "ESCALATED" : "SIMULATED";
-      detail = `${detail}${mayRunReal ? "" : " | Mode simulasi."}`;
+      status = stageReal ? "ESCALATED" : "SIMULATED";
+      simulated = !stageReal;
+      detail = `${detail}${stageReal ? "" : ` | Mode simulasi: ${approval.reason}.`}`;
     } else {
       status = "SIMULATED";
       detail = `${detail} | Mode simulasi${approval.ok ? "" : `: ${approval.reason}`}.`;
     }
 
-    const call = await prisma.urgentCall.create({
-      data: {
-        patientId: options.patientId,
-        visitId: options.visitId,
-        triageLogId: options.triageLogId,
-        channel: stage.channel === "ESCALATION" ? "ESCALATION" : stage.channel,
-        attempt: stage.offsetSeconds === 300 ? 2 : 1,
-        status,
-        provider:
-          stage.channel === "WHATSAPP"
-            ? "whatsapp"
-            : stage.channel === "CALL"
-              ? "phone"
-              : "internal",
-        simulated: !mayRunReal,
-        message: stage.channel === "WHATSAPP" ? message : stage.detail,
-        triggeredBy: options.actorId ?? "SYSTEM",
-        approvedBy: options.approvalId ?? options.approvedBy ?? null
-      }
-    });
+    const attempt = stage.offsetSeconds === 300 ? 2 : 1;
+    const callData = {
+      patientId: options.patientId,
+      visitId: options.visitId,
+      triageLogId: options.triageLogId,
+      channel: stage.channel,
+      attempt,
+      status,
+      provider,
+      simulated,
+      message: stage.channel === "WHATSAPP" ? message : stage.detail,
+      triggeredBy: options.actorId ?? "SYSTEM",
+      approvedBy:
+        approval.ok && approval.approverId ? approval.approverId : (options.approvedBy ?? null)
+    };
+
+    // Job worker memakai placeholder QUEUED: retry/update tidak membuat baris ganda.
+    const existingQueued =
+      options.stageOffset !== undefined && options.triageLogId
+        ? await prisma.urgentCall.findFirst({
+            where: {
+              triageLogId: options.triageLogId,
+              channel: stage.channel,
+              attempt,
+              status: "QUEUED"
+            },
+            orderBy: { createdAt: "desc" }
+          })
+        : null;
+    const call = existingQueued
+      ? await prisma.urgentCall.update({ where: { id: existingQueued.id }, data: callData })
+      : await prisma.urgentCall.create({ data: callData });
 
     stages.push({ ...stage, status, detail, callLogId: call.id });
   }
 
+  const partial = stages.some((item) => item.status === "FAILED");
   await writeAgentLog({
     agentName: "URGENT_CALLER",
-    status: "SUCCESS",
+    status: partial ? "PARTIAL" : "SUCCESS",
     message: `Follow-up MERAH untuk pasien ${options.patientId}: ${stages.length} tahap`,
     payload: JSON.stringify(stages.map(({ label, status }) => ({ label, status })))
   });

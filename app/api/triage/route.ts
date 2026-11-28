@@ -1,43 +1,16 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { runUrgentTriage } from "@/agents/urgentCaller";
 import { writeAgentLog } from "@/lib/agentLog";
 import { auditApiAccess } from "@/lib/audit";
 import { logger } from "@/lib/logger";
-import {
-  createApiContext,
-  deny,
-  guardOrigin,
-  guardRateLimit,
-  ok,
-  requirePermission
-} from "@/lib/apiRoute";
-
-const vitalsSchema = z.object({
-  systolic: z.number().int().min(0).max(300).nullable().optional(),
-  diastolic: z.number().int().min(0).max(200).nullable().optional(),
-  glucose: z.number().int().min(0).max(1000).nullable().optional(),
-  saturation: z.number().int().min(0).max(100).nullable().optional(),
-  pulse: z.number().int().min(0).max(250).nullable().optional(),
-  temperature: z.number().min(30).max(45).nullable().optional(),
-  potassium: z.number().min(0).max(15).nullable().optional(),
-  hemoglobin: z.number().min(0).max(30).nullable().optional(),
-  platelets: z.number().int().min(0).max(2000000).nullable().optional(),
-  notes: z.string().max(1000).nullable().optional()
-});
-
-const bodySchema = z.object({
-  patientId: z.string().min(1),
-  complaint: z.string().max(500).optional(),
-  approvalId: z.string().min(1).optional(),
-  vitals: vitalsSchema
-});
+import { deny, guardRateLimit, ok, requirePermission, withApi } from "@/lib/apiRoute";
+import { triageBodySchema } from "@/lib/schemas";
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const ctx = await createApiContext(request, "/api/triage");
-  const originBlocked = guardOrigin(ctx);
-  if (originBlocked) return originBlocked;
+  const gate = await withApi(request, { path: "/api/triage" });
+  if (gate.response) return gate.response;
+  const { ctx } = gate;
 
   if (!requirePermission(ctx, "triage:write")) {
     return deny(
@@ -52,7 +25,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   const limited = await guardRateLimit(ctx, `triage:${ctx.userId ?? ctx.ip}`, 60, 60_000);
   if (limited) return limited;
 
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const parsed = triageBodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return deny(ctx, 400, "Data tidak valid.", "TRIAGE_INVALID", undefined, {
       detail: parsed.error.flatten()

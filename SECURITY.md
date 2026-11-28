@@ -35,7 +35,9 @@ This project handles sensitive clinical data patterns. Reports related to the fo
 - Authentication/session bypass, RBAC bypass, IDOR/data exposure.
 - Secret/key exposure, cryptography misuse, audit/log integrity issues.
 - Injection, SSRF, path traversal, unsafe file access, insecure deserialization.
-- Outbound approval bypass, queue/job signature bypass, rate-limit bypass.
+- Outbound approval bypass (including approval reuse or channel mismatch), queue/job signature bypass, DLQ/retry side effects.
+- Rate-limit bypass, non-atomic Redis limits, trusted-proxy/`X-Forwarded-For` spoofing.
+- PHI redaction gaps and report file path/extension handling.
 - Deployment/configuration weaknesses that can lead to data compromise.
 
 Out of scope:
@@ -48,10 +50,12 @@ Out of scope:
 
 Before production use with real patient data:
 
-- Set strong random `NEXTAUTH_SECRET` and `FIELD_ENCRYPTION_KEY` (>= 32 bytes).
+- Set strong random `NEXTAUTH_SECRET` and `FIELD_ENCRYPTION_KEY` (>= 32 bytes); boot-time env validation and fail-closed signing key must be active.
 - Set `NEXTAUTH_URL=https://...`, `SYNC_MODE=false`, `REQUIRE_HUMAN_APPROVAL=true`.
-- Keep `ALLOW_REAL_OUTBOUND=false` unless explicitly approved and audited.
-- Run DB/Redis on private networks; use Redis password/TLS as configured.
-- Configure `TRUST_PROXY` only to trusted reverse proxy IPs.
+- Use PostgreSQL via `DATABASE_URL`, `QUEUE_MODE=redis`, and `RATE_LIMIT_MODE=redis`; run the worker as a separate process.
+- Keep `ALLOW_REAL_OUTBOUND=false` unless explicitly approved and audited; keep `ALLOW_SEED=false`.
+- Run DB/Redis on private networks; production Redis needs a password and TLS outside loopback (CI Redis is passwordless for tests only).
+- Configure `TRUST_PROXY` only to trusted reverse proxy IPs; client IP comes from the rightmost untrusted `X-Forwarded-For` hop.
+- Configure queue DLQ/alerting and verify `GET /api/health` (public) and `GET /api/ready` (send `Authorization: Bearer <READY_TOKEN>` in production).
 - Enable backups, encrypted restore tests, log monitoring, and incident response.
 - Perform external security review/penetration test and legal/compliance review (UU PDP).

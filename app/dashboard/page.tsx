@@ -3,8 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { canAccessAudit, canApproveOutbound, canViewDiagnosis, canViewTriage } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
+import { wibDateKey } from "@/lib/date";
 import { ManualRunButton } from "@/components/manual-run-button";
 import { ApprovalPanel } from "@/components/approval-panel";
+
+/** Batas "pending" dihitung di helper agar render tetap murni. */
+function pendingSince(): Date {
+  return new Date(Date.now() - 24 * 3_600_000);
+}
 
 async function distinctPatientCount(level: string): Promise<number> {
   const rows = await prisma.triageLog.findMany({
@@ -44,15 +50,37 @@ export default async function DashboardPage() {
         : Promise.resolve(null)
     ]);
 
+  // Yang benar-benar "pending" adalah MERAH yang belum punya tindak-lanjut
+  // aktif. Log SIMULATED/FAILED tidak boleh menghilangkan kebutuhan approval.
   const pendingUrgent = canApproveOutbound(role)
-    ? recent
-        .filter((item) => item.level === "MERAH")
-        .map((item) => ({
-          id: item.id,
-          patientName: item.patient.name,
-          level: item.level,
-          createdAt: item.createdAt.toLocaleString("id-ID")
-        }))
+    ? await prisma.triageLog
+        .findMany({
+          where: {
+            level: "MERAH",
+            createdAt: { gte: pendingSince() },
+            urgentCalls: { none: { status: { in: ["QUEUED", "SENT", "ESCALATED"] } } }
+          },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            level: true,
+            createdAt: true,
+            patient: { select: { name: true } }
+          }
+        })
+        .then((rows) =>
+          rows.map((item) => ({
+            id: item.id,
+            patientName: item.patient.name,
+            level: item.level,
+            createdAt: new Intl.DateTimeFormat("id-ID", {
+              timeZone: "Asia/Jakarta",
+              dateStyle: "short",
+              timeStyle: "short"
+            }).format(item.createdAt)
+          }))
+        )
     : [];
 
   return (
@@ -97,17 +125,14 @@ export default async function DashboardPage() {
           <p className="text-2xl font-bold text-emerald-700">{greenCount}</p>
         </div>
         <div className="rounded-lg border p-4">
-          <p className="text-sm">Log urgent (mock)</p>
+          <p className="text-sm">Log urgent simulasi</p>
           <p className="text-2xl font-bold">{urgentCalls}</p>
         </div>
       </section>
 
       {role === "ADMIN" ? <ManualRunButton /> : null}
       {canApproveOutbound(role) ? (
-        <ApprovalPanel
-          pendingUrgent={pendingUrgent}
-          today={new Date().toISOString().slice(0, 10)}
-        />
+        <ApprovalPanel pendingUrgent={pendingUrgent} today={wibDateKey()} />
       ) : null}
 
       <section className="rounded-lg border p-4">

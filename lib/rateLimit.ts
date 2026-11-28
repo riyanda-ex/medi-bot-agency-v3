@@ -3,9 +3,18 @@
  * otherwise in-memory fallback for single-instance/dev.
  */
 
-import Redis from "ioredis";
+import type Redis from "ioredis";
 import { isProductionRuntime } from "@/lib/env";
 import { logger } from "@/lib/logger";
+
+// INCR + PEXPIRE harus atomik: crash di antaranya membuat key tanpa TTL dan
+// mengunci pengguna/ip selamanya. Lua dijalankan di server Redis.
+const FIXED_WINDOW_LUA = `
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
+local ttl = redis.call('PTTL', KEYS[1])
+return { current, ttl }
+`;
 
 interface Bucket {
   count: number;
@@ -36,12 +45,14 @@ function shouldUseRedis(): boolean {
     : Boolean(process.env.RATE_LIMIT_REDIS_URL);
 }
 
-function getRedis(): Redis | null {
+async function getRedis(): Promise<Redis | null> {
   const url = getRedisUrl();
   if (!url || !shouldUseRedis()) return null;
   if (Date.now() < redisUnavailableUntil) return null;
   if (redis) return redis;
-  redis = new Redis(url, {
+  // Mode default adalah sync; klien Redis hanya dimuat saat benar-benar dipakai.
+  const { default: RedisClient } = await import("ioredis");
+  redis = new RedisClient(url, {
     maxRetriesPerRequest: 1,
     connectTimeout: 1000,
     lazyConnect: true,
@@ -58,14 +69,15 @@ async function checkRedisRateLimit(
   limit: number,
   windowMs: number
 ): Promise<RateLimitResult | null> {
-  const client = getRedis();
+  const client = await getRedis();
   if (!client) return null;
   try {
     if (client.status === "wait") await client.connect();
     const redisKey = `rl:${key}`;
-    const count = await client.incr(redisKey);
-    if (count === 1) await client.pexpire(redisKey, windowMs);
-    const pttl = await client.pttl(redisKey);
+    const [count, pttl] = (await client.eval(FIXED_WINDOW_LUA, 1, redisKey, String(windowMs))) as [
+      number,
+      number
+    ];
     const retryAfterSeconds =
       pttl > 0 ? Math.max(1, Math.ceil(pttl / 1000)) : Math.max(1, Math.ceil(windowMs / 1000));
     if (count > limit) {
@@ -122,6 +134,10 @@ function checkMemoryRateLimit(
   };
 }
 
+function memoryFallbackAllowed(): boolean {
+  return !isProductionRuntime() || process.env.ALLOW_INSECURE_MEMORY_RATE_LIMIT === "true";
+}
+
 export async function checkRateLimit(
   key: string,
   limit: number,
@@ -130,6 +146,20 @@ export async function checkRateLimit(
 ): Promise<RateLimitResult> {
   const redisResult = await checkRedisRateLimit(key, limit, windowMs);
   if (redisResult) return redisResult;
+
+  if (!memoryFallbackAllowed()) {
+    // Fail-closed: memori lokal tidak aman untuk multi-instance. Lebih baik
+    // menolak sementara daripada membiarkan brute-force lewat instance lain.
+    logger.error("rate_limit.redis_fail_closed", {
+      detail: "Redis tidak tersedia; fallback memori dilarang di produksi."
+    });
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 30,
+      backend: "memory"
+    };
+  }
   return checkMemoryRateLimit(key, limit, windowMs, now);
 }
 

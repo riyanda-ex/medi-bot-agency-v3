@@ -22,8 +22,11 @@ npm run dev
 Run before opening a PR:
 
 ```powershell
+npm run lint
+npm run format:check
 npm run typecheck
 npm test
+npm run test:coverage
 npm run build
 npm audit --audit-level=high
 ```
@@ -35,12 +38,14 @@ npm run e2e
 npm run queue:check
 ```
 
+`npm run queue:check` accepts both Redis mode (HTTP `202` + `jobId`) and sync mode (HTTP `200` + `outcomes`/`totalLogs`); set the queue mode in `.env` before running it.
+
 ## Pull Request Guidelines
 
 - Keep changes focused and explain security/data impact.
 - Follow existing structure: `app/` for routes/UI, `lib/` for shared runtime, `agents/` for domain logic.
 - Add or update tests for behavior/security changes.
-- Update docs (`README.md`, `docs/*`, `.env.example`) when configuration or behavior changes.
+- Update docs (`README.md`, `README.id.md`, `TESTING.md`, `PLAN.md`, `CHANGELOG.md`, `docs/*`, `.env.example`) when configuration or behavior changes.
 - Never weaken auth, RBAC, audit, approval, encryption, or outbound guards without explicit owner approval.
 
 ## Commit Style

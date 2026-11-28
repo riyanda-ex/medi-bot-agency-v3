@@ -3,7 +3,7 @@ import { canViewDiagnosis, hasPermission } from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { redactRecordForRole } from "@/agents/securityGuard";
-import { createApiContext, guardRateLimit, ok } from "@/lib/apiRoute";
+import { guardRateLimit, ok, withApi } from "@/lib/apiRoute";
 import { jsonWithRequestId } from "@/lib/requestContext";
 import { logApiRequest } from "@/lib/apiLog";
 
@@ -14,7 +14,9 @@ type RouteContext = { params: Promise<{ id: string }> };
  * ke DOKTER/ADMIN; peran lain menerima field non-diagnosis saja.
  */
 export async function GET(request: Request, context: RouteContext): Promise<NextResponse> {
-  const ctx = await createApiContext(request, "/api/patients/[id]/record");
+  const gate = await withApi(request, { path: "/api/patients/[id]/record" });
+  if (gate.response) return gate.response;
+  const { ctx } = gate;
   const { id } = await context.params;
 
   if (!hasPermission(ctx.role, "patient:read") || ctx.sessionInvalid) {

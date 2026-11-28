@@ -107,23 +107,26 @@ Buka `http://localhost:3000`.
 
 ## Perintah yang Tersedia
 
-| Perintah                | Deskripsi                                                  |
-| ----------------------- | ---------------------------------------------------------- |
-| `npm run dev`           | Jalankan server development Next.js.                       |
-| `npm run build`         | Buat build produksi.                                       |
-| `npm run start`         | Jalankan server produksi.                                  |
-| `npm run lint`          | Jalankan ESLint.                                           |
-| `npm run format:check`  | Cek format Prettier.                                       |
-| `npm run typecheck`     | Cek TypeScript.                                            |
-| `npm test`              | Jalankan test Vitest.                                      |
-| `npm run test:coverage` | Jalankan test dengan coverage.                             |
-| `npm run db:setup`      | Generate Prisma client, push schema SQLite, seed data dev. |
-| `npm run db:studio`     | Buka Prisma Studio.                                        |
-| `npm run db:setup:pg`   | Push + seed PostgreSQL (butuh `DATABASE_URL`).             |
-| `npm run queue:worker`  | Jalankan worker BullMQ (butuh `QUEUE_MODE=redis`).         |
-| `npm run verify:agents` | Smoke-test agent dan DB.                                   |
-| `npm run e2e`           | Jalankan cek HTTP E2E terhadap server berjalan.            |
-| `npm run queue:check`   | Verifikasi queue Redis mengembalikan 202 + `jobId`.        |
+| Perintah                     | Deskripsi                                                             |
+| ---------------------------- | --------------------------------------------------------------------- |
+| `npm run dev`                | Jalankan server development Next.js.                                  |
+| `npm run build`              | Buat build produksi.                                                  |
+| `npm run start`              | Jalankan server produksi.                                             |
+| `npm run lint`               | Jalankan ESLint.                                                      |
+| `npm run format:check`       | Cek format Prettier.                                                  |
+| `npm run typecheck`          | Cek TypeScript.                                                       |
+| `npm test`                   | Jalankan semua tes Vitest.                                            |
+| `npm run test:coverage`      | Jalankan semua tes dengan coverage.                                   |
+| `npm run verify:all`         | Jalankan lint, cek format, typecheck, tes, build, dan cek OpenAPI.    |
+| `npm run openapi:check`      | Validasi dokumentasi API terhadap route.                              |
+| `npm run db:setup`           | Generate Prisma client, push schema SQLite, seed data dev.            |
+| `npm run db:studio`          | Buka Prisma Studio.                                                   |
+| `npm run prisma:generate:pg` | Generate schema/client Prisma PostgreSQL.                             |
+| `npm run db:setup:pg`        | Push + seed PostgreSQL (butuh `DATABASE_URL`).                        |
+| `npm run queue:worker`       | Jalankan worker BullMQ (butuh `QUEUE_MODE=redis`; proses blocking).   |
+| `npm run verify:agents`      | Smoke-test agent dan DB.                                              |
+| `npm run e2e`                | Jalankan cek HTTP E2E terhadap server berjalan.                       |
+| `npm run queue:check`        | Cek queue: Redis 202 + `jobId`; sinkron 200 + `outcomes`/`totalLogs`. |
 
 ## Struktur Proyek
 
@@ -146,36 +149,60 @@ docs/        Arsitektur, API, struktur, checklist produksi, ADR
 
 Salin `.env.example` ke `.env`. Variabel penting:
 
-| Variabel                 | Default      | Tujuan                                              |
-| ------------------------ | ------------ | --------------------------------------------------- |
-| `WHATSAPP_PROVIDER`      | `mock`       | `mock`, `fonnte`, `wablas`                          |
-| `PHONE_PROVIDER`         | `mock`       | `mock`, `twilio`                                    |
-| `ALLOW_REAL_OUTBOUND`    | `false`      | Aktifkan outbound nyata hanya dengan gate approval. |
-| `REQUIRE_HUMAN_APPROVAL` | `true`       | Wajib untuk outbound nyata; dipaksa di produksi.    |
-| `QUEUE_MODE`             | `sync`       | `sync` atau `redis`.                                |
-| `REDIS_URL`              | -            | Wajib untuk mode queue Redis.                       |
-| `TRUST_PROXY`            | kosong       | IP proxy tepercaya untuk forwarded client IP.       |
-| `SYNC_MODE`              | `true` (dev) | Harus `false` di produksi.                          |
-| `RATE_LIMIT_MODE`        | `auto`       | `auto`, `memory`, `redis` untuk rate limiter.       |
+| Variabel                 | Default         | Tujuan                                                                                            |
+| ------------------------ | --------------- | ------------------------------------------------------------------------------------------------- |
+| `READY_TOKEN`            | -               | Melindungi `GET /api/ready` di produksi via Bearer/`x-ready-token`; terbuka di lokal bila kosong. |
+| `DATABASE_URL`           | `file:./dev.db` | SQLite untuk dev lokal; URL PostgreSQL di produksi.                                               |
+| `WHATSAPP_PROVIDER`      | `mock`          | `mock`, `fonnte`, `wablas`                                                                        |
+| `PHONE_PROVIDER`         | `mock`          | `mock`, `twilio`                                                                                  |
+| `ALLOW_REAL_OUTBOUND`    | `false`         | Aktifkan outbound nyata hanya dengan gate approval.                                               |
+| `REQUIRE_HUMAN_APPROVAL` | `true`          | Wajib untuk outbound nyata; dipaksa di produksi.                                                  |
+| `QUEUE_MODE`             | `sync`          | `sync` atau `redis`.                                                                              |
+| `REDIS_URL`              | -               | Wajib untuk mode queue Redis.                                                                     |
+| `TRUST_PROXY`            | kosong          | IP proxy tepercaya untuk forwarded client IP.                                                     |
+| `SYNC_MODE`              | `true` (dev)    | Harus `false` di produksi.                                                                        |
+| `RATE_LIMIT_MODE`        | `auto`          | `auto`, `memory`, `redis`; pakai `redis` di produksi.                                             |
 
 Lihat `.env.example` untuk daftar lengkap.
 
 ## Deployment Produksi
 
 1. Ikuti [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md).
-2. Sediakan PostgreSQL + Redis (jaringan privat, auth/TLS sesuai kebutuhan).
-3. Set secret kuat dan env guard produksi.
-4. Jalankan:
+2. Sediakan PostgreSQL + Redis di jaringan privat; pakai auth/TLS Redis di luar loopback.
+3. Set secret kuat dan environment produksi di `.env`:
+
+```dotenv
+DATABASE_URL="postgresql://<user>:<password>@<host>:5432/medibot?schema=public"
+QUEUE_MODE=redis
+SYNC_MODE=false
+RATE_LIMIT_MODE=redis
+READY_TOKEN="<random-token>"
+ALLOW_SEED=false
+```
+
+4. Jalankan infrastruktur, lalu migrasi/seed dan build:
 
 ```powershell
 docker compose up -d
 npm run db:setup:pg
 npm run build
+```
+
+5. Jalankan worker dan aplikasi di **terminal terpisah** (worker bersifat blocking):
+
+```powershell
+# Terminal 1 — worker BullMQ
 npm run queue:worker
+```
+
+```powershell
+# Terminal 2 — server aplikasi
 npm run start
 ```
 
-`QUEUE_MODE=redis` mengembalikan HTTP 202 + `jobId` untuk pekerjaan yang diantrikan; jalankan worker sebagai proses terpisah.
+Untuk menjalankan app dan worker sebagai container, pakai `docker compose --profile app up -d` (keduanya berada di balik profile `app`; `docker compose up -d` hanya menyalakan PostgreSQL dan Redis).
+
+Pada `QUEUE_MODE=redis`, permintaan yang diantrikan mengembalikan HTTP 202 + `jobId`; `npm run queue:check` juga menerima mode sinkron (HTTP 200 + `outcomes`/`totalLogs`). `GET /api/health` tetap terbuka untuk healthcheck; di produksi `GET /api/ready` memerlukan `READY_TOKEN` lewat `Authorization: Bearer <token>` atau `x-ready-token`.
 
 ## Dokumentasi
 
@@ -186,8 +213,12 @@ npm run start
 - [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md) — model ancaman STRIDE.
 - [`docs/PRIVACY-DATA-HANDLING.md`](docs/PRIVACY-DATA-HANDLING.md) — penanganan data/privasi.
 - [`docs/INCIDENT-RESPONSE.md`](docs/INCIDENT-RESPONSE.md) — runbook respons insiden.
+- [`docs/GITHUB-SETUP.md`](docs/GITHUB-SETUP.md) — pengaturan GitHub yang perlu diverifikasi.
+- [`docs/adr/`](docs/adr/) — arsitektur decision record (ADR).
 - [`TESTING.md`](TESTING.md) — protokol pengujian.
 - [`SECURITY.md`](SECURITY.md) — pelaporan kerentanan.
+- [`SUPPORT.md`](SUPPORT.md) — bantuan dan dukungan.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — aturan kontribusi.
 - [`CHANGELOG.md`](CHANGELOG.md) — perubahan penting.
 
 ## Kontribusi & Keamanan

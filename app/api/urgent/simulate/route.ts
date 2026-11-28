@@ -1,26 +1,16 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { hasPermission } from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
 import { buildUrgentJobId, enqueueJob } from "@/lib/queue";
 import { prisma } from "@/lib/prisma";
 import { executeUrgentFollowUp } from "@/agents/urgentCaller";
-import { createApiContext, deny, guardOrigin, guardRateLimit, ok } from "@/lib/apiRoute";
-
-const bodySchema = z
-  .object({
-    patientId: z.string().min(1).optional(),
-    visitId: z.string().min(1).optional(),
-    triageLogId: z.string().min(1).optional()
-  })
-  .refine((data) => Boolean(data.patientId || data.visitId || data.triageLogId), {
-    message: "Salah satu dari patientId, visitId, atau triageLogId wajib diisi."
-  });
+import { deny, guardRateLimit, ok, withApi } from "@/lib/apiRoute";
+import { urgentSimulateBodySchema } from "@/lib/schemas";
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const ctx = await createApiContext(request, "/api/urgent/simulate");
-  const originBlocked = guardOrigin(ctx);
-  if (originBlocked) return originBlocked;
+  const gate = await withApi(request, { path: "/api/urgent/simulate" });
+  if (gate.response) return gate.response;
+  const { ctx } = gate;
   if (
     (!hasPermission(ctx.role, "triage:write") && !hasPermission(ctx.role, "agent:run")) ||
     ctx.sessionInvalid
@@ -35,7 +25,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
   const limited = await guardRateLimit(ctx, `urgent-sim:${ctx.userId ?? ctx.ip}`, 20, 60_000);
   if (limited) return limited;
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const parsed = urgentSimulateBodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
     return deny(ctx, 400, "Data tidak valid.", "URGENT_SIMULATE_INVALID", undefined, {
       detail: parsed.error.flatten()

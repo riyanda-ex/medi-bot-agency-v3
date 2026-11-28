@@ -128,8 +128,13 @@ describe("Hardening produksi - enkripsi, audit, dan antrean", () => {
     delete process.env.TRUST_PROXY;
     expect(getRequestIp(request)).toBe("unknown");
 
-    process.env.TRUST_PROXY = "10.0.0.5";
+    // Hop paling kanan adalah peer proxy yang nyata. XFF kiri boleh dispoof.
+    process.env.TRUST_PROXY = "10.0.0.1";
     expect(getRequestIp(request)).toBe("198.51.100.7");
+
+    // Peer tidak terdaftar: hop kanan dipakai, bukan klien palsu di kiri.
+    process.env.TRUST_PROXY = "10.0.0.5";
+    expect(getRequestIp(request)).toBe("10.0.0.1");
   });
 
   it("antrean hanya aktif dengan QUEUE_MODE=redis dan REDIS_URL", () => {

@@ -1,15 +1,17 @@
 # Petunjuk Pengaturan GitHub
 
-Dokumen ini untuk pengaturan yang **tidak bisa sepenuhnya diotomasi dari repo**. Beberapa sudah saya set via API; cek dan lengkapi sisanya.
+Dokumen ini untuk pengaturan yang **tidak bisa sepenuhnya diotomasi dari repo**.
 
-## Sudah diset (verifikasi)
+> **Status per 28 November 2026:** visibilitas repositori **belum dikonfirmasi**. `README.md`, `CONTRIBUTING.md`, dan `LICENSE` menyatakan repo ini **proprietary**; jangan menganggapnya PUBLIC tanpa verifikasi di Settings > General. Perlindungan branch `main` harus mewajibkan **minimal satu review approval** selain CI checks.
 
-- [x] Repo visibility: PUBLIC
-- [x] Description, homepage, topics
-- [x] Discussions enabled
-- [x] Secret scanning enabled
-- [x] Secret scanning push protection enabled
-- [x] Branch protection `main`: required CI checks, strict, conversation resolution, no force push/delete
+## Pengaturan yang perlu diverifikasi ulang
+
+- [ ] Repo visibility — cek di Settings > General dan samakan dengan status proprietary di README/CONTRIBUTING/LICENSE (jangan asumsikan PUBLIC).
+- [ ] Description, homepage, topics
+- [ ] Discussions enabled
+- [ ] Secret scanning enabled
+- [ ] Secret scanning push protection enabled
+- [ ] Branch protection `main`: required CI checks + minimal 1 required reviewer approval, strict, conversation resolution, no force push/delete
 
 ## Wajib dicek manual
 

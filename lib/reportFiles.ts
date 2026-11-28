@@ -6,12 +6,22 @@
 import path from "node:path";
 
 const REPORTS_ROOT = path.resolve(process.cwd(), "reports");
+const ALLOWED_EXTENSIONS = new Set([".pdf", ".xlsx"]);
 
 export function resolveReportPath(filePath: string): string {
   const resolved = path.resolve(filePath);
   const relative = path.relative(REPORTS_ROOT, resolved);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  // `startsWith("..")` salah menolak nama sah seperti `..laporan.pdf`.
+  if (
+    !relative ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
     throw new Error("Path laporan di luar direktori yang diizinkan.");
+  }
+  if (!ALLOWED_EXTENSIONS.has(path.extname(resolved).toLowerCase())) {
+    throw new Error("Ekstensi file laporan tidak diizinkan.");
   }
   return resolved;
 }

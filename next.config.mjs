@@ -25,13 +25,21 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   output: "standalone",
-  serverExternalPackages: ["@prisma/client", "bcryptjs", "bullmq", "ioredis"],
+  serverExternalPackages: [
+    "@prisma/client",
+    "bcryptjs",
+    "bullmq",
+    "exceljs",
+    "ioredis",
+    "nodemailer",
+    "pdfkit"
+  ],
   async headers() {
     return [
+      { source: "/:path*", headers: baseHeaders },
       {
         source: "/api/:path*",
         headers: [
-          ...baseHeaders,
           { key: "Content-Security-Policy", value: apiCsp },
           { key: "Cache-Control", value: "no-store, max-age=0" }
         ]

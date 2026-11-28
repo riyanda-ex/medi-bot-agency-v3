@@ -107,21 +107,26 @@ Open `http://localhost:3000`.
 
 ## Available Scripts
 
-| Command                      | Description                                                |
-| ---------------------------- | ---------------------------------------------------------- |
-| `npm run dev`                | Start Next.js development server.                          |
-| `npm run build`              | Create production build.                                   |
-| `npm run start`              | Start production server.                                   |
-| `npm run typecheck`          | Run TypeScript checks.                                     |
-| `npm test`                   | Run Vitest suite.                                          |
-| `npm run db:setup`           | Generate Prisma client, push SQLite schema, seed dev data. |
-| `npm run db:studio`          | Open Prisma Studio.                                        |
-| `npm run prisma:generate:pg` | Generate PostgreSQL Prisma schema/client.                  |
-| `npm run db:setup:pg`        | Push + seed PostgreSQL (requires `DATABASE_URL`).          |
-| `npm run queue:worker`       | Run BullMQ worker (requires `QUEUE_MODE=redis`).           |
-| `npm run verify:agents`      | Smoke-test agents and DB.                                  |
-| `npm run e2e`                | Run HTTP E2E checks against running server.                |
-| `npm run queue:check`        | Verify Redis queue returns 202 + `jobId`.                  |
+| Command                      | Description                                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| `npm run dev`                | Start Next.js development server.                                                  |
+| `npm run build`              | Create production build.                                                           |
+| `npm run start`              | Start production server.                                                           |
+| `npm run lint`               | Run ESLint.                                                                        |
+| `npm run format:check`       | Check formatting with Prettier.                                                    |
+| `npm run typecheck`          | Run TypeScript checks.                                                             |
+| `npm test`                   | Run all Vitest tests.                                                              |
+| `npm run test:coverage`      | Run all tests with coverage.                                                       |
+| `npm run verify:all`         | Run lint, format check, typecheck, tests, build, and OpenAPI check.                |
+| `npm run openapi:check`      | Validate API documentation against routes.                                         |
+| `npm run db:setup`           | Generate Prisma client, push SQLite schema, seed dev data.                         |
+| `npm run db:studio`          | Open Prisma Studio.                                                                |
+| `npm run prisma:generate:pg` | Generate PostgreSQL Prisma schema/client.                                          |
+| `npm run db:setup:pg`        | Push + seed PostgreSQL (requires `DATABASE_URL`).                                  |
+| `npm run queue:worker`       | Run BullMQ worker (requires `QUEUE_MODE=redis`; blocking process).                 |
+| `npm run verify:agents`      | Smoke-test agents and DB.                                                          |
+| `npm run e2e`                | Run HTTP E2E checks against running server.                                        |
+| `npm run queue:check`        | Check queue: Redis returns 202 + `jobId`; sync returns 200 + outcomes/`totalLogs`. |
 
 ## Project Structure
 
@@ -136,7 +141,7 @@ prisma/      Schema + seed
 scripts/     Worker, E2E, queue checks, schema sync
 tests/       Vitest tests
 fixes/       Bug-hunter artifacts/helpers
-docs/        Architecture, API, structure, production checklist
+docs/        Architecture, API, structure, production checklist, ADR
 .github/     CI, Dependabot, templates, CODEOWNERS
 ```
 
@@ -144,35 +149,60 @@ docs/        Architecture, API, structure, production checklist
 
 Copy `.env.example` to `.env`. Key variables:
 
-| Variable                 | Default      | Purpose                                                   |
-| ------------------------ | ------------ | --------------------------------------------------------- |
-| `WHATSAPP_PROVIDER`      | `mock`       | `mock`, `fonnte`, `wablas`                                |
-| `PHONE_PROVIDER`         | `mock`       | `mock`, `twilio`                                          |
-| `ALLOW_REAL_OUTBOUND`    | `false`      | Enables real outbound providers only with approval gates. |
-| `REQUIRE_HUMAN_APPROVAL` | `true`       | Required for real outbound; forced in production.         |
-| `QUEUE_MODE`             | `sync`       | `sync` or `redis`.                                        |
-| `REDIS_URL`              | -            | Required for Redis queue mode.                            |
-| `TRUST_PROXY`            | empty        | Trusted proxy IPs for forwarded client IP.                |
-| `SYNC_MODE`              | `true` (dev) | Must be `false` in production.                            |
+| Variable                 | Default         | Purpose                                                                                      |
+| ------------------------ | --------------- | -------------------------------------------------------------------------------------------- |
+| `READY_TOKEN`            | -               | Protects `GET /api/ready` in production via Bearer/`x-ready-token`; open locally when unset. |
+| `DATABASE_URL`           | `file:./dev.db` | SQLite for local dev; PostgreSQL URL in production.                                          |
+| `WHATSAPP_PROVIDER`      | `mock`          | `mock`, `fonnte`, `wablas`                                                                   |
+| `PHONE_PROVIDER`         | `mock`          | `mock`, `twilio`                                                                             |
+| `ALLOW_REAL_OUTBOUND`    | `false`         | Enables real outbound providers only with approval gates.                                    |
+| `REQUIRE_HUMAN_APPROVAL` | `true`          | Required for real outbound; forced in production.                                            |
+| `QUEUE_MODE`             | `sync`          | `sync` or `redis`.                                                                           |
+| `REDIS_URL`              | -               | Required for Redis queue mode.                                                               |
+| `TRUST_PROXY`            | empty           | Trusted proxy IPs for forwarded client IP.                                                   |
+| `SYNC_MODE`              | `true` (dev)    | Must be `false` in production.                                                               |
+| `RATE_LIMIT_MODE`        | `auto`          | `auto`, `memory`, `redis`; use `redis` in production.                                        |
 
 See `.env.example` for the full list.
 
 ## Production Deployment
 
 1. Follow [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md).
-2. Provision PostgreSQL + Redis (private network, auth/TLS as needed).
-3. Set strong secrets and production env guards.
-4. Run:
+2. Provision PostgreSQL + Redis on a private network; use Redis auth/TLS outside loopback.
+3. Set strong secrets and the production environment in `.env`:
+
+```dotenv
+DATABASE_URL="postgresql://<user>:<password>@<host>:5432/medibot?schema=public"
+QUEUE_MODE=redis
+SYNC_MODE=false
+RATE_LIMIT_MODE=redis
+READY_TOKEN="<random-token>"
+ALLOW_SEED=false
+```
+
+4. Start infrastructure, then migrate/seed and build:
 
 ```powershell
 docker compose up -d
 npm run db:setup:pg
 npm run build
+```
+
+5. Start the worker and the app in **separate terminals** (the worker is blocking):
+
+```powershell
+# Terminal 1 — BullMQ worker
 npm run queue:worker
+```
+
+```powershell
+# Terminal 2 — app server
 npm run start
 ```
 
-`QUEUE_MODE=redis` returns HTTP 202 + `jobId` for queued work; run the worker as a separate process.
+To run app and worker as containers, use `docker compose --profile app up -d` (both are behind the `app` profile; `docker compose up -d` starts only PostgreSQL and Redis).
+
+In `QUEUE_MODE=redis`, queued requests return HTTP 202 + `jobId`; `npm run queue:check` also accepts sync mode (HTTP 200 + outcomes/`totalLogs`). `GET /api/health` stays open for healthchecks; in production `GET /api/ready` requires `READY_TOKEN` via `Authorization: Bearer <token>` or `x-ready-token`.
 
 ## Documentation
 
@@ -180,9 +210,16 @@ npm run start
 - [`docs/API.md`](docs/API.md) — API endpoint summary.
 - [`docs/STRUCTURE.md`](docs/STRUCTURE.md) — repository layout and placement rules.
 - [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md) — deployment hardening checklist.
+- [`docs/THREAT-MODEL.md`](docs/THREAT-MODEL.md) — STRIDE threat model.
+- [`docs/PRIVACY-DATA-HANDLING.md`](docs/PRIVACY-DATA-HANDLING.md) — privacy and data handling.
+- [`docs/INCIDENT-RESPONSE.md`](docs/INCIDENT-RESPONSE.md) — incident response runbook.
+- [`docs/GITHUB-SETUP.md`](docs/GITHUB-SETUP.md) — repository settings to verify.
+- [`docs/adr/`](docs/adr/) — architecture decision records.
 - [`TESTING.md`](TESTING.md) — testing protocol.
 - [`PLAN.md`](PLAN.md) — implementation plan and status.
 - [`SECURITY.md`](SECURITY.md) — vulnerability reporting.
+- [`SUPPORT.md`](SUPPORT.md) — getting help.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution rules.
 - [`CHANGELOG.md`](CHANGELOG.md) — notable changes.
 
 ## Contributing & Security

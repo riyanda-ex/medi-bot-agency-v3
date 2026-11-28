@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { maskNik } from "@/lib/crypto";
-import { createApiContext, deny, guardRateLimit, ok, requirePermission } from "@/lib/apiRoute";
+import { deny, guardRateLimit, ok, requirePermission, withApi } from "@/lib/apiRoute";
 
 export async function GET(request: Request): Promise<NextResponse> {
-  const ctx = await createApiContext(request, "/api/patients");
+  const gate = await withApi(request, { path: "/api/patients" });
+  if (gate.response) return gate.response;
+  const { ctx } = gate;
   if (!requirePermission(ctx, "patient:read"))
     return deny(ctx, 403, "Akses ditolak.", "PATIENT_LIST_DENIED");
   const limited = await guardRateLimit(

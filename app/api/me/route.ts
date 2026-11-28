@@ -1,50 +1,28 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { auditApiAccess } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { enforceRateLimit, getClientIp } from "@/lib/requestGuard";
-import { getRequestId, jsonWithRequestId, withRequestId } from "@/lib/requestContext";
-import { logApiRequest } from "@/lib/apiLog";
+import { deny, guardRateLimit, ok, withApi } from "@/lib/apiRoute";
 
 /** Data diri pasien: hanya pasien yang bersangkutan yang bisa mengakses. */
 export async function GET(request: Request): Promise<NextResponse> {
-  const requestId = getRequestId(request);
-  const startedAt = Date.now();
-  const session = await getServerSession(authOptions);
-  const role = session?.user.role ?? "TIDAK_AKTIF";
-  const patientId = session?.user.patientId;
-  const ip = getClientIp(request);
-  const log = (statusCode: number, error?: string) =>
-    void logApiRequest({
-      requestId,
-      method: "GET",
-      path: "/api/me",
-      statusCode,
-      durationMs: Date.now() - startedAt,
-      ip,
-      userId: session?.user.id,
-      error
-    });
+  const gate = await withApi(request, { path: "/api/me", skipOrigin: true });
+  if (gate.response) return gate.response;
+  const { ctx } = gate;
+  const patientId = ctx.session?.user.patientId;
 
-  if (!hasPermission(role, "own:read") || !patientId || session?.user.invalid) {
-    await auditApiAccess({
-      request,
-      session,
-      action: "OWN_DATA_DENIED",
-      detail: `Peran ${role} mencoba mengakses data diri.`,
-      requestId
-    });
-    log(403, "forbidden");
-    return jsonWithRequestId(requestId, { error: "Akses ditolak.", requestId }, { status: 403 });
+  if (!hasPermission(ctx.role, "own:read") || !patientId || ctx.sessionInvalid) {
+    return deny(
+      ctx,
+      403,
+      "Akses ditolak.",
+      "OWN_DATA_DENIED",
+      `Peran ${ctx.role} mencoba mengakses data diri.`
+    );
   }
 
-  const limited = await enforceRateLimit(`me:${session?.user.id ?? ip}`, 60, 60_000);
-  if (limited) {
-    log(429, "rate_limited");
-    return withRequestId(limited, requestId);
-  }
+  const limited = await guardRateLimit(ctx, `me:${ctx.userId ?? ctx.ip}`, 60, 60_000);
+  if (limited) return limited;
 
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
@@ -63,22 +41,16 @@ export async function GET(request: Request): Promise<NextResponse> {
   });
 
   if (!patient) {
-    log(404, "not_found");
-    return jsonWithRequestId(
-      requestId,
-      { error: "Data pasien tidak ditemukan.", requestId },
-      { status: 404 }
-    );
+    return deny(ctx, 404, "Data pasien tidak ditemukan.", "OWN_DATA_NOT_FOUND");
   }
 
   await auditApiAccess({
-    request,
-    session,
+    request: ctx.request,
+    session: ctx.session,
     action: "OWN_DATA_READ",
     targetPatientId: patientId,
     detail: "Data diri dan appointment dikembalikan dengan NIK termasker.",
-    requestId
+    requestId: ctx.requestId
   });
-  log(200);
-  return jsonWithRequestId(requestId, { patient, requestId });
+  return ok(ctx, { patient, requestId: ctx.requestId });
 }

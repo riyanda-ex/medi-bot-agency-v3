@@ -29,7 +29,7 @@
 ### Langkah 1 — Struktur project + Prisma + Auth + seed
 
 - [x] Next.js 16.4.6 App Router + TypeScript + Tailwind + pola shadcn/ui.
-- [x] `prisma/schema.prisma` dengan **17 model** (SQLite default) + generator PostgreSQL.
+- [x] `prisma/schema.prisma` dengan **18 model** (termasuk `ApiLog`; SQLite default) + generator PostgreSQL.
 - [x] NextAuth Credentials + JWT, revalidasi database tiap request, `proxy.ts` proteksi route.
 - [x] Enkripsi AES-256-GCM + HMAC hash NIK + masking `35****xxxx`.
 - [x] Seed 20 pasien Indonesia: 3 MERAH (190/120, gula 320, saturasi 88%), 5 KUNING, 12 HIJAU. NIK diawali `35`.
@@ -62,7 +62,7 @@
 ### Langkah 5 — Test end-to-end + README
 
 - [x] `npm install && npm run build` bersih di Windows PowerShell.
-- [x] `npm test` 28/28 (10 triage + 3 helper + 15 hardening).
+- [x] `npm test` — semua tes lulus (jumlah tes dapat berubah).
 - [x] `npm audit --audit-level=high` = 0 vulnerability.
 - [x] E2E HTTP dari kondisi bersih: generate laporan dulu, lalu download PDF/Excel.
 - [x] E2E memastikan semua 6 outcome Manual Run `SUCCESS`.
@@ -79,7 +79,7 @@
 | Input TD 190/120 langsung MERAH < 5 detik                    | ✅     | Diukur dalam E2E                                  |
 | Klik Simulasi Panggilan Urgent masuk ke log                  | ✅     | 4 baris `urgent_calls` per simulasi               |
 | Laporan download PDF & Excel                                 | ✅     | Laporan dibuat otomatis oleh E2E sebelum download |
-| `npm test` lolos 10/10 triage                                | ✅     | Total 28/28 dengan hardening                      |
+| `npm test` lolos (semua tes)                                 | ✅     | Jalankan `npm test`; jumlah tes dapat berubah     |
 | Tidak ada API key asli di kode                               | ✅     | Hanya placeholder di `.env.example`               |
 
 **Catatan keputusan:** spesifikasi awal meminta Next.js 14, tetapi audit keamanan 2026
@@ -96,6 +96,7 @@ agar `npm audit` = 0 vulnerability.
 4. **PostgreSQL produksi.** SQLite hanya untuk testing Windows. Gunakan `npm run db:setup:pg` dengan `DATABASE_URL` PostgreSQL.
 5. **Redis produksi.** `REDIS_URL` wajib berpassword; host publik wajib TLS. Docker compose mengikat port ke loopback.
 6. **Cron dalam proses.** Scheduler node-cron untuk single-instance; multi-instance memakai `QUEUE_MODE=redis` + worker.
+7. **Rate limit produksi.** Pakai `RATE_LIMIT_MODE=redis` agar state dibagikan antar instance; jangan mengandalkan memory mode.
 
 ---
 
@@ -112,12 +113,27 @@ agar `npm audit` = 0 vulnerability.
 - [x] Laporan: containment path `reports/`, tidak ada path absolut ke klien, metrik nyata dari `/api/reports/generate`, grafik Excel dan UI.
 - [x] Bug Hunter: tidak memindai rule literal dirinya sendiri, artefak `/fixes` read-only.
 - [x] Fitur tambahan: `/api/me`, `/api/chatbot`, dispatcher notifikasi, dashboard RBAC + pasien unik.
-- [x] CI: `permissions: contents: read`, secrets throwaway yang kuat, job worker BullMQ dengan 202 + `jobId`, E2E dari seed bersih.
-- [x] Dokumen diselaraskan: 28 tes, 17 model, Next.js 16.4.6, cron env-driven, `DATABASE_PROVIDER` dihapus.
+- [x] CI: `permissions: contents: read`, secrets throwaway yang kuat, job worker BullMQ dengan 202 + `jobId`, E2E dari seed bersih. Redis di CI tanpa password (PostgreSQL berpassword); hanya untuk pengujian.
+- [x] Dokumen diselaraskan: semua tes lewat `npm test`, 18 model, Next.js 16.4.6, cron env-driven, `DATABASE_PROVIDER` dihapus, `queue:check` mendukung redis + sinkron.
 
 ---
 
-## 7. Hak kekayaan intelektual
+## 7. Tindak lanjut audit (selesai, dengan tes regresi)
+
+- [x] Validasi environment aman saat boot via `instrumentation` + signing key fail-closed.
+- [x] Validasi IP `TRUST_PROXY` dan pemilihan hop `X-Forwarded-For` tidak tepercaya paling kanan.
+- [x] Rate limit Redis atomik dan fail-closed di produksi.
+- [x] Approval terikat kanal dan sekali pakai per tahap.
+- [x] Helper tanggal WIB bersama, flag `simulated` dari hasil provider, status `PARTIAL`.
+- [x] Queue DLQ/alerting; retry tanpa mengulang efek samping agent penuh.
+- [x] Nama izin RBAC diperbaiki dan redaksi PHI diperluas.
+- [x] File laporan per `reportId` dengan allowlist ekstensi.
+- [x] Konsolidasi wrapper/schema API dan pembersihan dependency/konfigurasi.
+- [x] Dokumentasi diselaraskan dengan kode (README EN/ID, API, checklist, testing, changelog).
+
+---
+
+## 8. Hak kekayaan intelektual
 
 - [x] `LICENSE` v3.1: proprietary komersial, All Rights Reserved, Pemilik = `riyanda-ex`,
       tanpa lisensi default, evaluasi tertulis revokabel, larangan reverse engineering/publicity,

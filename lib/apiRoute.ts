@@ -117,3 +117,51 @@ export function requirePermission(
 ): boolean {
   return hasPermission(ctx.role as Role, permission) && !ctx.sessionInvalid;
 }
+
+export interface WithApiOptions {
+  path: string;
+  permission?: Parameters<typeof hasPermission>[1];
+  rateLimitKey?: string;
+  limit?: number;
+  windowMs?: number;
+  denyError?: string;
+  denyAction?: string;
+  denyDetail?: string;
+  skipOrigin?: boolean;
+}
+
+export type WithApiResult =
+  { response: NextResponse; ctx: ApiContext } | { response: null; ctx: ApiContext };
+
+export async function withApi(request: Request, options: WithApiOptions): Promise<WithApiResult> {
+  const ctx = await createApiContext(request, options.path);
+  if (!options.skipOrigin) {
+    const originBlocked = guardOrigin(ctx);
+    if (originBlocked) return { response: originBlocked, ctx };
+  }
+
+  if (options.permission && !requirePermission(ctx, options.permission)) {
+    return {
+      response: await deny(
+        ctx,
+        403,
+        options.denyError ?? "Akses ditolak.",
+        options.denyAction ?? "ACCESS_DENIED",
+        options.denyDetail ?? `Peran ${ctx.role} tidak memiliki izin ${String(options.permission)}.`
+      ),
+      ctx
+    };
+  }
+
+  if (options.rateLimitKey && options.limit !== undefined && options.windowMs !== undefined) {
+    const limited = await guardRateLimit(
+      ctx,
+      options.rateLimitKey,
+      options.limit,
+      options.windowMs
+    );
+    if (limited) return { response: limited, ctx };
+  }
+
+  return { response: null, ctx };
+}

@@ -82,6 +82,9 @@ export function assertSecureEnvironment(): EnvironmentCheck {
     if (process.env.REQUIRE_HUMAN_APPROVAL === "false") {
       errors.push("REQUIRE_HUMAN_APPROVAL tidak boleh false di produksi");
     }
+    if (!isStrongSecret(process.env.READY_TOKEN, 16)) {
+      errors.push("READY_TOKEN wajib acak minimal 16 byte di produksi untuk /api/ready");
+    }
     const nextAuthUrl = process.env.NEXTAUTH_URL ?? "";
     const isLocalhostHttp = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(nextAuthUrl);
     if (!nextAuthUrl.startsWith("https://") && !isLocalhostHttp) {

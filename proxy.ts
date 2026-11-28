@@ -21,17 +21,9 @@ function buildCsp(nonce: string, isDev: boolean): string {
 }
 
 function applySecurity(response: NextResponse, request: NextRequest, csp: string): NextResponse {
+  // Base headers are set globally in next.config.mjs; keep only the nonce CSP
+  // and protocol-dependent HSTS here.
   response.headers.set("Content-Security-Policy", csp);
-  response.headers.set("X-Frame-Options", "DENY");
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  response.headers.set(
-    "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(), browsing-topics=(), payment=()"
-  );
-  response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
-  response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
-  response.headers.set("X-DNS-Prefetch-Control", "off");
   if (request.nextUrl.protocol === "https:") {
     response.headers.set(
       "Strict-Transport-Security",

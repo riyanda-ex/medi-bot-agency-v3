@@ -15,6 +15,9 @@ export const PERMISSIONS: Record<Role, readonly string[]> = {
   ADMIN: [
     "patient:read",
     "patient:write",
+    "patient:read_nik",
+    "patient:read_diagnosis",
+    "patient:read_contact",
     "diagnosis:read",
     "triage:read",
     "triage:write",
@@ -27,6 +30,9 @@ export const PERMISSIONS: Record<Role, readonly string[]> = {
   ],
   DOKTER: [
     "patient:read",
+    "patient:read_nik",
+    "patient:read_diagnosis",
+    "patient:read_contact",
     "diagnosis:read",
     "triage:read",
     "triage:write",

@@ -7,6 +7,7 @@ import { normalizeRole, TIDAK_AKTIF } from "@/lib/rbac";
 import { assertSecureEnvironment } from "@/lib/env";
 import { checkRateLimit, pruneRateLimits } from "@/lib/rateLimit";
 import { getRequestIp, recordAuthFailure } from "@/lib/audit";
+import { logger } from "@/lib/logger";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -14,10 +15,13 @@ const credentialsSchema = z.object({
 });
 
 const LOGIN_LIMIT = 8;
+// Batas global per email: XFF bisa diputar penyerang, jadi IP saja tidak cukup.
+const LOGIN_EMAIL_LIMIT = 20;
 const LOGIN_WINDOW_MS = 5 * 60_000;
 // Hash dummy dipakai saat email tidak ada agar waktu respons tidak membedakan
 // antara "email tidak terdaftar" dan "kata sandi salah".
-const DUMMY_HASH = bcrypt.hashSync("timing-equalizer-not-a-real-password", 10);
+// Hash statis precomputed: tidak perlu menjalankan bcrypt saat modul dimuat.
+const DUMMY_HASH = "$2a$10$52vxxR/eTsqzgZO0R34rxuz2B/.iM1THzq8cF4vQgk/gMQTUZSBOe";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -35,13 +39,14 @@ export const authOptions: NextAuthOptions = {
         const email = parsed.data.email.trim().toLowerCase();
         const headers = (request?.headers ?? {}) as Record<string, string | string[] | undefined>;
         const ip = getRequestIp(headers);
-        const rateKey = `login:${ip}:${email}`;
         pruneRateLimits();
-        const rate = await checkRateLimit(rateKey, LOGIN_LIMIT, LOGIN_WINDOW_MS);
-        if (!rate.allowed) {
-          console.warn(
-            `[AUTH] Login dibatasi untuk ${email} dari ${ip}, coba lagi ${rate.retryAfterSeconds}s.`
-          );
+        const [ipRate, emailRate] = await Promise.all([
+          checkRateLimit(`login:ip:${ip}:${email}`, LOGIN_LIMIT, LOGIN_WINDOW_MS),
+          checkRateLimit(`login:email:${email}`, LOGIN_EMAIL_LIMIT, LOGIN_WINDOW_MS)
+        ]);
+        if (!ipRate.allowed || !emailRate.allowed) {
+          const retryAfterSeconds = Math.max(ipRate.retryAfterSeconds, emailRate.retryAfterSeconds);
+          logger.warn("auth.login_rate_limited", { email, ip, retryAfterSeconds });
           await recordAuthFailure({ email, ip, reason: "RATE_LIMITED" });
           return null;
         }
@@ -50,12 +55,12 @@ export const authOptions: NextAuthOptions = {
         const valid = await bcrypt.compare(parsed.data.password, user?.passwordHash ?? DUMMY_HASH);
 
         if (!user || !valid) {
-          console.warn(`[AUTH] Login gagal untuk ${email} dari ${ip}.`);
+          logger.warn("auth.login_failed", { email, ip });
           await recordAuthFailure({ email, ip, reason: "INVALID_CREDENTIALS" });
           return null;
         }
         if (user.status !== "AKTIF") {
-          console.warn(`[AUTH] Akun nonaktif mencoba login: ${email}.`);
+          logger.warn("auth.inactive_account", { email, ip });
           await recordAuthFailure({ email, ip, reason: "ACCOUNT_INACTIVE" });
           return null;
         }

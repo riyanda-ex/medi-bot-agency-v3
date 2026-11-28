@@ -6,9 +6,8 @@
 npm test
 ```
 
-Harapan: **semua tes lulus** — mencakup triage (`tests/triage.test.ts`), helper Bug Hunter
-(`fixes/fixes.test.ts`), hardening (`tests/hardening.test.ts`), dan password seed lokal
-(`tests/seed-password.test.ts`).
+Harapan: **semua tes lulus** (jalankan `npm test`) — mencakup triage, helper Bug Hunter,
+hardening, dan password seed lokal. Jumlah tes dapat berubah; gunakan `npm test`, bukan angka tetap.
 
 Cakupan triage:
 
@@ -98,16 +97,30 @@ Bug Hunter) plus pemeriksaan database; Orchestrator diuji lewat Manual Run/E2E.
 
 ## 6. Produksi (PostgreSQL + Redis)
 
+Isi `.env` dengan `DATABASE_URL` PostgreSQL, `QUEUE_MODE=redis`, `SYNC_MODE=false`,
+`RATE_LIMIT_MODE=redis`, `READY_TOKEN` acak, `ALLOW_SEED=false`,
+`REDIS_URL=redis://:<password>@localhost:6379`, `POSTGRES_PASSWORD`/`REDIS_PASSWORD` acak,
+serta `NEXTAUTH_SECRET` dan `FIELD_ENCRYPTION_KEY` acak minimal 32 byte.
+
 ```powershell
 docker compose up -d
-# Isi POSTGRES_PASSWORD dan REDIS_PASSWORD di .env dengan nilai acak.
-# Set DATABASE_URL PostgreSQL, QUEUE_MODE=redis,
-# REDIS_URL=redis://:<password>@localhost:6379,
-# NEXTAUTH_SECRET dan FIELD_ENCRYPTION_KEY minimal 32 byte acak.
 npm run db:setup:pg
 npm run build
+```
+
+Jalankan worker dan server di terminal terpisah (worker blocking):
+
+```powershell
+# Terminal 1 — worker BullMQ
 npm run queue:worker
 ```
+
+```powershell
+# Terminal 2 — server aplikasi
+npm run start
+```
+
+Untuk menjalankan app/worker sebagai container, gunakan `docker compose --profile app up -d`.
 
 Verifikasi producer/worker terpisah:
 
@@ -115,9 +128,15 @@ Verifikasi producer/worker terpisah:
 npm run queue:check
 ```
 
-Endpoint `/api/orchestrator/run` dan `/api/urgent/simulate` harus mengembalikan `202` + `jobId`,
-dan log worker menampilkan `Worker aktif` serta penyelesaian job. CI GitHub Actions menjalankan
-skenario yang sama dengan service PostgreSQL/Redis berpassword.
+Skrip menerima dua mode: Redis (`202` + `jobId`) dan sinkron (`200` + `outcomes`/`totalLogs`).
+Pada deployment Redis, endpoint `/api/orchestrator/run` dan `/api/urgent/simulate` harus
+mengembalikan `202` + `jobId`, dan log worker menampilkan `Worker aktif` serta penyelesaian job.
+CI GitHub Actions menjalankan skenario yang sama dengan PostgreSQL berpassword; Redis di CI
+**tanpa password** (khusus pengujian, bukan konfigurasi produksi).
+
+Pada produksi, `GET /api/health` tetap terbuka untuk healthcheck; `GET /api/ready` mengembalikan
+`403` tanpa `Authorization: Bearer <READY_TOKEN>` atau header `x-ready-token`. Di lokal dengan
+`READY_TOKEN` kosong, endpoint readiness tetap terbuka.
 
 ## 7. Yang belum diuji untuk produksi
 

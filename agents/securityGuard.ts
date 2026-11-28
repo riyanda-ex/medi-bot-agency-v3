@@ -79,12 +79,13 @@ export function redactPatientForRole(
   },
   role: Role
 ): PatientView {
-  const privileged = hasPermission(role, "patient:read") || canViewDiagnosis(role);
+  const canReadNik = hasPermission(role, "patient:read_nik");
+  const canReadContact = hasPermission(role, "patient:read_contact");
   return {
     id: patient.id,
     name: patient.name,
-    nik: privileged ? decryptField(patient.nikEncrypted) : patient.nikMasked,
-    phone: privileged
+    nik: canReadNik ? decryptField(patient.nikEncrypted) : patient.nikMasked,
+    phone: canReadContact
       ? decryptField(patient.phoneEncrypted)
       : maskPhone(decryptField(patient.phoneEncrypted)),
     address: patient.address,
@@ -92,19 +93,32 @@ export function redactPatientForRole(
   };
 }
 
-export function redactRecordForRole<
-  T extends { diagnosisIcd10: string | null; anamnesis: string | null }
->(record: T, role: Role): T | Omit<T, "diagnosisIcd10" | "anamnesis"> {
+/** Field rekam medis yang berisi PHI dan tidak boleh dikirim ke peran rendah. */
+export const SENSITIVE_RECORD_FIELDS = [
+  "diagnosisIcd10",
+  "anamnesis",
+  "actionIcd9",
+  "radiology",
+  "vitalSigns",
+  "note"
+] as const;
+type SensitiveRecordField = (typeof SENSITIVE_RECORD_FIELDS)[number];
+
+export function redactRecordForRole<T extends Partial<Record<SensitiveRecordField, unknown>>>(
+  record: T,
+  role: Role
+): T | Omit<T, SensitiveRecordField> {
   if (canViewDiagnosis(role)) return record;
-  const { diagnosisIcd10: _diagnosis, anamnesis: _anamnesis, ...safe } = record;
-  return safe;
+  const safe = { ...record } as Record<string, unknown>;
+  for (const field of SENSITIVE_RECORD_FIELDS) delete safe[field];
+  return safe as Omit<T, SensitiveRecordField>;
 }
 
 export function maskNikForRole(
   patient: { nikEncrypted: string; nikMasked: string },
   role: Role
 ): string {
-  return hasPermission(role, "patient:read") || canViewDiagnosis(role)
+  return hasPermission(role, "patient:read_nik")
     ? decryptField(patient.nikEncrypted)
     : maskNik(decryptField(patient.nikEncrypted));
 }

@@ -3,7 +3,8 @@ import { getRequestId, jsonWithRequestId } from "@/lib/requestContext";
 import { logApiRequest } from "@/lib/apiLog";
 import { prisma } from "@/lib/prisma";
 import { isQueueEnabled } from "@/lib/queue";
-import Redis from "ioredis";
+import { isProductionRuntime } from "@/lib/env";
+import { getRequestIp } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,8 @@ async function checkRedis(): Promise<{ ok: boolean; detail: string }> {
   if (!isQueueEnabled()) return { ok: true, detail: "skipped (QUEUE_MODE!=redis)" };
   const url = process.env.REDIS_URL;
   if (!url) return { ok: false, detail: "REDIS_URL missing" };
-  const client = new Redis(url, {
+  const { default: RedisClient } = await import("ioredis");
+  const client = new RedisClient(url, {
     maxRetriesPerRequest: 1,
     connectTimeout: 1500,
     lazyConnect: true,
@@ -28,9 +30,40 @@ async function checkRedis(): Promise<{ ok: boolean; detail: string }> {
   }
 }
 
+function authorized(request: Request): boolean {
+  const token = process.env.READY_TOKEN;
+  if (!token) return !isProductionRuntime();
+  const provided =
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    request.headers.get("x-ready-token");
+  return provided === token;
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   const requestId = getRequestId(request);
   const startedAt = Date.now();
+  const guard = (status: number, error: string, detail: string) => {
+    void logApiRequest({
+      requestId,
+      method: "GET",
+      path: "/api/ready",
+      statusCode: status,
+      durationMs: Date.now() - startedAt,
+      ip: getRequestIp(request),
+      error
+    });
+    return jsonWithRequestId(
+      requestId,
+      { error: detail, requestId },
+      { status, headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
+  };
+
+  // Endpoint infra tidak boleh terbuka publik di produksi.
+  if (!authorized(request)) {
+    return guard(403, "forbidden", "Akses readiness tidak diizinkan.");
+  }
+
   const checks: Record<string, { ok: boolean; detail: string }> = {
     database: { ok: false, detail: "unknown" },
     redis: { ok: false, detail: "unknown" }
@@ -46,14 +79,13 @@ export async function GET(request: Request): Promise<NextResponse> {
   checks.redis = await checkRedis();
 
   const ready = Object.values(checks).every((c) => c.ok);
-  const status = ready ? 200 : 503;
   void logApiRequest({
     requestId,
     method: "GET",
     path: "/api/ready",
-    statusCode: status,
+    statusCode: ready ? 200 : 503,
     durationMs: Date.now() - startedAt,
-    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    ip: getRequestIp(request),
     error: ready ? null : "not_ready"
   });
   return jsonWithRequestId(
