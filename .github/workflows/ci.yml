@@ -43,6 +43,9 @@ jobs:
       - run: npm ci
       - run: npm run prisma:generate
       - run: npm run db:setup
+      # tests/data-lifecycle.test.ts memeriksa skema PostgreSQL hasil generate;
+      # buat file turunannya sebelum verify:all tanpa mengganti client SQLite.
+      - run: node scripts/sync-postgres-schema.mjs
       - run: npm run verify:all
       - run: npm run test:ci
       - run: npm run openapi:check
