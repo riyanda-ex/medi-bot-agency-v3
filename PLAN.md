@@ -63,7 +63,7 @@
 
 - [x] `npm install && npm run build` bersih di Windows PowerShell.
 - [x] `npm test` 148/148 (termasuk triage, hardening, privasi, MFA, approval, dan integritas audit).
-- [x] `npm run test:ci` coverage: 53,45% statements, 49,73% branches, 65,52% functions, 54,71% lines.
+- [x] `npm run test:ci` coverage: 53,60% statements, 49,88% branches, 65,63% functions, 54,97% lines.
 - [x] `npm audit --audit-level=high` = 0 vulnerability.
 - [x] E2E HTTP dari kondisi bersih: generate laporan dulu, lalu download PDF/Excel.
 - [x] E2E memastikan semua 6 outcome Manual Run `SUCCESS`.

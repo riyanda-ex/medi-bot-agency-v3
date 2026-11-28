@@ -1,9 +1,10 @@
 /**
  * TOTP (RFC 6238) dan kode pemulihan tanpa dependency eksternal.
- * Secret disimpan terenkripsi di DB; kode pemulihan hanya disimpan sebagai hash.
+ * Secret disimpan terenkripsi di DB; kode pemulihan hanya disimpan sebagai hash
+ * scrypt bersalt (bukan hash cepat).
  */
 
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 export const TOTP_STEP_SECONDS = 30;
@@ -108,10 +109,27 @@ function normalizeRecoveryCode(code: string): string {
   return code.trim().toUpperCase().replace(/\s+/g, "");
 }
 
+const RECOVERY_HASH_PREFIX = "scrypt$";
+
+/** KDF dengan salt acak dipakai karena CodeQL menolak hash cepat untuk secret. */
 export function hashRecoveryCode(code: string): string {
-  return createHash("sha256")
-    .update(`mfa-recovery-v1|${normalizeRecoveryCode(code)}`)
-    .digest("hex");
+  const salt = randomBytes(16).toString("hex");
+  const derived = scryptSync(`mfa-recovery-v1|${normalizeRecoveryCode(code)}`, salt, 32);
+  return `${RECOVERY_HASH_PREFIX}${salt}$${derived.toString("hex")}`;
+}
+
+function verifyRecoveryCode(code: string, stored: string): boolean {
+  if (!stored.startsWith(RECOVERY_HASH_PREFIX)) return false;
+  const [, salt, digestHex] = stored.split("$");
+  if (!salt || !digestHex) return false;
+  const expected = Buffer.from(digestHex, "hex");
+  if (expected.length === 0) return false;
+  const actual = scryptSync(
+    `mfa-recovery-v1|${normalizeRecoveryCode(code)}`,
+    salt,
+    expected.length
+  );
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 export function hashRecoveryCodes(codes: string[]): string {
@@ -129,9 +147,8 @@ export function consumeRecoveryCode(
   code: string
 ): { ok: boolean; remaining: string } {
   if (!stored || !code) return { ok: false, remaining: stored ?? "" };
-  const candidate = hashRecoveryCode(code);
   const hashes = stored.split(",").filter(Boolean);
-  const index = hashes.findIndex((item) => codesEqual(item, candidate));
+  const index = hashes.findIndex((item) => verifyRecoveryCode(code, item));
   if (index < 0) return { ok: false, remaining: stored };
   hashes.splice(index, 1);
   return { ok: true, remaining: hashes.join(",") };

@@ -34,7 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - CI pins actions to commit SHAs and uses Node 24 + npm 11.20.0 with CI-only throwaway values.
 - Seed requires `ALLOW_DESTRUCTIVE_SEED=1` in dev/test and never runs in production; passwords come from `SEED_ADMIN_PASSWORD`.
 - Node baseline raised to 24 (`package.json`, `.nvmrc`, badges); 21 Prisma models and 148 tests.
-- CI coverage baseline: 53.45% statements, 49.73% branches, 65.52% functions, 54.71% lines.
+- CI coverage baseline: 53.60% statements, 49.88% branches, 65.63% functions, 54.97% lines.
 
 ### Security
 

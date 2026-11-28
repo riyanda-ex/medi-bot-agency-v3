@@ -57,7 +57,7 @@ vi.mock("@/lib/prisma", () => {
 });
 
 import { approvalAllowsChannel } from "../lib/approval";
-import { hashRecoveryCodes, totpAt } from "../lib/mfa";
+import { consumeRecoveryCode, hashRecoveryCodes, totpAt } from "../lib/mfa";
 import { consumeRecoveryCodeForUser } from "../lib/mfaStore";
 import { hashResetToken } from "../lib/passwordReset";
 import { POST as mfaPost } from "../app/api/me/mfa/route";
@@ -165,8 +165,9 @@ describe("MFA pendaftaran server-side", () => {
     expect(enable.status).toBe(200);
     expect(user.mfaEnabled).toBe(true);
     expect(user.mfaSecret).toBe(pendingSecret);
-    expect(user.mfaRecoveryHash).toBe(hashRecoveryCodes(setup.recoveryCodes));
-    expect(user.mfaRecoveryHash).not.toBe(hashRecoveryCodes(attackerCodes));
+    const storedRecoveryHashes = user.mfaRecoveryHash as string | null;
+    expect(consumeRecoveryCode(storedRecoveryHashes, setup.recoveryCodes[0]!).ok).toBe(true);
+    expect(consumeRecoveryCode(storedRecoveryHashes, attackerCodes[0]!).ok).toBe(false);
     expect(user.mfaPendingSecret).toBeNull();
   });
 
